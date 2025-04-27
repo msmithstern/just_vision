@@ -29,7 +29,9 @@ def get_feature_vector(img, offsets, joints):
     for i, joint in enumerate(joints): 
         feature = np.zeros(len(offsets))
         x, y = joint
-        d = img[x][y]
+        x = int(round(x))
+        y = int(round(y))
+        d = img[x, y]
         for j, offset in enumerate(offsets): 
             delta_x, delta_y = offset
             offset_d = x + delta_x, y + delta_y
@@ -69,7 +71,7 @@ offsets = random_sample_offsets()
 
 for i in range(len(depth_train)):
     depth = depth_train[i]
-    joints = joints_train[i].flatten()
+    joints = joints_train[i][:, :2]
     # get feature vector for each joint
     joint_feature = get_feature_vector(depth, offsets, joints)
     depth_feature = resize(depth, (60, 80), anti_aliasing=True)
@@ -88,7 +90,7 @@ y_test = []
 
 for i in range(len(depth_test)):
     depth = depth_test[i]
-    joints = joints_test[i].flatten()
+    joints = joints_test[i][:, :2]
     depth_vector = resize(depth, (60, 80), anti_aliasing=True)
     joint_feature = get_feature_vector(depth, offsets, joints)
 
