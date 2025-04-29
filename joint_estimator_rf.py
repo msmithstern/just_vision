@@ -25,32 +25,39 @@ def get_feature_vector(img, offsets, joints):
     """
     # compute the feature response for each pixel 
     joints = np.array(joints)
-    ft_vector = np.zeros((joints.shape[0], len(offsets)))
+    ft_vector = np.zeros((joints.shape[0], len(offsets) + 3))
     # for ecah joint in image 
     for i, joint in enumerate(joints): 
         # create a feature entry for every offset 
         feature = np.zeros(len(offsets))
         x, y, z = joint
-        x = int(round(x))
-        y = int(round(y))
-        z = int(round(z))
         Cz = 0.0035 # intrinsic camera calibration parameter
-        u = x / Cz + 160
-        v = -y / Cz + 120
-        assert z == img[v][u], "Depth values do not match joint coordinates"
+        u = int(x / Cz + 160)
+        print("test values")
+        print(u)
+        v = int(-y / Cz + 120)
+        print(v) 
+        if(u < 0 or u >= img.shape[1] or v < 0 or v >= img.shape[0]): 
+            print("joint out of bounds")
+            continue 
+        print(z, img[v][u])
+        assert abs(z - img[v][u]) > 1e-3, "Depth values do not match joint coordinates %d %d %d" % (z, img[v][u])
         for j, offset in enumerate(offsets): 
             delta_x, delta_y = offset
-            offset_d = x + delta_x, y + delta_y
+            offset_d = v + delta_y, u + delta_x
             # Ensure offsets are within image bounds
             if 0 <= offset_d[0] < img.shape[0] and 0 <= offset_d[1] < img.shape[1]:
-                feature[j] = z - img[offset_d]
+                feature[j] = z - img[offset_d[0], offset_d[1]]
             else:
                 # If out of bounds, set feature to zero 
                 feature[j] = 0
-        ft_vector[i] = joint + feature # append real joint position to feature vector  
+        joint = np.array(joint).reshape(1, 3)
+        feature = np.array(feature).reshape(1, -1)
+        ft_vector[i] = np.hstack((joint, feature))
+        print("Shape", np.array(ft_vector[i]).shape)
     return ft_vector
 
-def random_sample_offsetsC():
+def random_sample_offsets():
     """
     This function randomly samples offset values for the feature response function
     """
@@ -66,8 +73,8 @@ def random_sample_offsetsC():
 # ---------- Step 1: Load and prepare training data ----------
 
 print("Loading training data...")
-with h5py.File('dataset/ITOP_side_train_depth_map.h5', 'r') as f_depth, \
-     h5py.File('dataset/ITOP_side_train_labels.h5', 'r') as f_label:
+with h5py.File('dataset/dataset/ITOP_side_test_depth_map.h5', 'r') as f_depth, \
+     h5py.File('dataset/dataset/ITOP_side_train_labels.h5', 'r') as f_label:
     depth_train = f_depth['data'][:] if MAX_TRAIN_SAMPLES is None else f_depth['data'][:MAX_TRAIN_SAMPLES]
     joints_train = f_label['real_world_coordinates'][:] if MAX_TRAIN_SAMPLES is None else f_label['real_world_coordinates'][:MAX_TRAIN_SAMPLES]
 
@@ -87,8 +94,8 @@ for i in range(len(depth_train)):
 # ---------- Step 2: Load test data ----------
 
 print("Loading test data...")
-with h5py.File('dataset/ITOP_side_test_depth_map.h5', 'r') as f_depth, \
-     h5py.File('dataset/ITOP_side_test_labels.h5', 'r') as f_label:
+with h5py.File('dataset/dataset/ITOP_side_test_depth_map.h5', 'r') as f_depth, \
+     h5py.File('dataset/dataset/ITOP_side_test_labels.h5', 'r') as f_label:
     depth_test = f_depth['data'][:] if MAX_TEST_SAMPLES is None else f_depth['data'][:MAX_TEST_SAMPLES]
     joints_test = f_label['real_world_coordinates'][:] if MAX_TEST_SAMPLES is None else f_label['real_world_coordinates'][:MAX_TEST_SAMPLES]
 
