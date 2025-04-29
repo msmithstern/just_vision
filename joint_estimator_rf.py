@@ -21,12 +21,14 @@ def get_feature_vector(img, offsets, joints):
     """
     This function returns a depth feature descriptor of each pixel in a joint vector  
     using the surrouding pixels and the feature response function. it concatenates each pixel 
-    descriptor into a vector of num_joints x num_offsets x 2 (15 x 100 x 2)
+    descriptor into a vector of num_joints x num_offsets x 2 (15 x 25 x 2)
     """
     # compute the feature response for each pixel 
     joints = np.array(joints)
     ft_vector = np.zeros((joints.shape[0], len(offsets)))
+    # for ecah joint in image 
     for i, joint in enumerate(joints): 
+        # create a feature entry for every offset 
         feature = np.zeros(len(offsets))
         x, y, z = joint
         x = int(round(x))
@@ -42,15 +44,15 @@ def get_feature_vector(img, offsets, joints):
             else:
                 # If out of bounds, set feature to zero 
                 feature[j] = 0
-        ft_vector[i] = feature 
+        ft_vector[i] = joint + feature # append real joint position to feature vector  
     return ft_vector
 
 def random_sample_offsets():
     """
     This function randomly samples offset values for the feature response function
     """
-    num_offsets = 100 # number of offsets to sample, 
-    offset_threshold = 30 # highest offset value 
+    num_offsets = 25 # number of offsets to sample, 
+    offset_threshold = 10 # highest offset value 
     offsets = []
     for _ in range(num_offsets): 
         x = np.random.randint(-1 * (offset_threshold + 1), offset_threshold + 1)
@@ -72,11 +74,11 @@ offsets = random_sample_offsets()
 
 for i in range(len(depth_train)):
     depth = depth_train[i]
-    joints = joints_train[i][:, :2]
+    joints = joints_train[i][:, :3]
     
     # get feature vector for each joint
     joint_feature = get_feature_vector(depth, offsets, joints)
-    depth_feature = resize(depth, (60, 80), anti_aliasing=True)
+    depth_feature = resize(depth, (240, 320), anti_aliasing=True)
     X_train.append(depth_feature.flatten())
     y_train.append(joint_feature.flatten())
 # ---------- Step 2: Load test data ----------
@@ -93,7 +95,7 @@ y_test = []
 for i in range(len(depth_test)):
     depth = depth_test[i]
     joints = joints_test[i][:, :3] # use 3d coordinates 
-    depth_vector = resize(depth, (60, 80), anti_aliasing=True)
+    depth_vector = resize(depth, (240, 320), anti_aliasing=True)
     joint_feature = get_feature_vector(depth, offsets, joints)
 
     X_test.append(depth_vector.flatten())
@@ -132,10 +134,11 @@ print("Test MSE:", mean_squared_error(y_test, y_pred))
 def predict_joints_from_image(image_path):
     print(f"Predicting joints for: {image_path}")
     depth_input = imageio.imread(image_path)
-    depth_resized = resize(depth_input, (60, 80), anti_aliasing=True).flatten()
-    predicted_joints = rf.predict([depth_resized]).reshape(15, 3)
+    depth_resized = resize(depth_input, (240, 320), anti_aliasing=True).flatten()
+    full_prediction = rf.predict([depth_resized])[0]         # shape: (15 × (3 + 25) )
+    predicted_joints = full_prediction[:45].reshape(15, 3)  # ignore feature vectors 
     return predicted_joints
-
+ 
 # ---------- Step 6: Plot joints on a test image ----------
 
 def plot_test_joints(index):
@@ -144,15 +147,13 @@ def plot_test_joints(index):
     predicted_joints = rf.predict([X_test[index]])[0].reshape(15, 3)
 
     # Convert joint positions from meters to image coordinates
-    fx, fy = 285.63, 285.63  # Example focal length
-    cx, cy = 160, 120        # Principal point
+    Cz = 0.0035      # instrincic camera calibration parameter 
 
     def project_to_image(joints):
         x = joints[:, 0]
         y = joints[:, 1]
-        z = joints[:, 2] + 1e-5  # prevent divide-by-zero
-        u = fx * x / z + cx
-        v = -fy * y / z + cy  # Flip vertical axis to match image coordinates
+        u = x / Cz + 160
+        v = -y / Cz + 120 # Flip vertical axis to match image coordinates
         return np.clip(u, 0, depth_img.shape[1]-1), np.clip(v, 0, depth_img.shape[0]-1)
 
     pred_u, pred_v = project_to_image(predicted_joints)
