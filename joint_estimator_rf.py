@@ -28,16 +28,17 @@ def get_feature_vector(img, offsets, joints):
     ft_vector = np.zeros((joints.shape[0], len(offsets)))
     for i, joint in enumerate(joints): 
         feature = np.zeros(len(offsets))
-        x, y = joint
+        x, y, z = joint
         x = int(round(x))
         y = int(round(y))
-        d = img[x, y]
+        z = int(round(z))
+        assert z == img[y][x], "Depth values do not match joint coordinates"
         for j, offset in enumerate(offsets): 
             delta_x, delta_y = offset
             offset_d = x + delta_x, y + delta_y
             # Ensure offsets are within image bounds
             if 0 <= offset_d[0] < img.shape[0] and 0 <= offset_d[1] < img.shape[1]:
-                feature[j] = d - img[offset_d]
+                feature[j] = z - img[offset_d]
             else:
                 # If out of bounds, set feature to zero 
                 feature[j] = 0
@@ -72,6 +73,7 @@ offsets = random_sample_offsets()
 for i in range(len(depth_train)):
     depth = depth_train[i]
     joints = joints_train[i][:, :2]
+    
     # get feature vector for each joint
     joint_feature = get_feature_vector(depth, offsets, joints)
     depth_feature = resize(depth, (60, 80), anti_aliasing=True)
@@ -90,7 +92,7 @@ y_test = []
 
 for i in range(len(depth_test)):
     depth = depth_test[i]
-    joints = joints_test[i][:, :2]
+    joints = joints_test[i][:, :3] # use 3d coordinates 
     depth_vector = resize(depth, (60, 80), anti_aliasing=True)
     joint_feature = get_feature_vector(depth, offsets, joints)
 

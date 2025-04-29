@@ -41,12 +41,12 @@ def compute_score(rf, poses, target_poses):
 def load_data():
     # TODO load real pose data with labels once i get the data 
     # dummy data for now 
-    X_train = np.random.rand(40, 15 * 2)  # 40 samples, 15 joints, 2D coordinates
+    X_train = np.random.rand(40, 15 * 3)  # 40 samples, 15 joints, 2D coordinates
     y_train = np.random.randint(0, 20, size=40) # 40 samples, 1 label per sample 
     return X_train, y_train
 
 rf = train_random_forest_classifier()
-poses = np.random.rand(2, 15 * 2)  # Dummy pose data for testing
+poses = np.random.rand(2, 15 * 3)  # Dummy pose data for testing
 target_poses = ["hip", "knee"]
 score = compute_score(rf, poses, target_poses)
 print(f"Score: {score}")
