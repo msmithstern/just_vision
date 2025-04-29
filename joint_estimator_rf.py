@@ -10,7 +10,7 @@ import joblib  # for saving and loading model
 
 # Ensure matplotlib uses a backend that supports plotting
 import matplotlib
-matplotlib.use('TkAgg')  # or 'Agg' if running headless
+matplotlib.use('Agg')  # or 'Agg' if running headless
 
 # Limit number of samples for quicker testing
 # Use all available samples
