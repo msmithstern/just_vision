@@ -47,6 +47,6 @@ def load_data():
 
 rf = train_random_forest_classifier()
 poses = np.random.rand(2, 15 * 3)  # Dummy pose data for testing
-target_poses = ["hip", "knee"]
+target_poses = ["hip", "jump-right"]
 score = compute_score(rf, poses, target_poses)
 print(f"Score: {score}")
