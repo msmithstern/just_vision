@@ -4,10 +4,12 @@ import os
 import numpy as np
 
 # TODO create dictionary to map labels to encodings 
-pose_label_dict = {
-    "hip" : 0, 
-    "knee" : 1, 
-}
+pose_labels = ["squat", "blow-right", "blow-left","point-forward", "thumb-right", "thumb-left",
+               "side", "hip", "hip-forward", "hip-backward", "Y", "M", "C", "A", "arm-out", "clap-right", 
+               "clap-left", "point-left", "jump-right", "jump-left", "shoot-left", "shoot-right", 
+               ]
+num_poses = len(pose_labels)
+pose_label_dict = {label: i for i, label in enumerate(pose_labels)}
 
 def get_or_train_model():
     if os.path.exists("pose_classifier.pkl"): 
