@@ -34,7 +34,10 @@ def get_feature_vector(img, offsets, joints):
         x = int(round(x))
         y = int(round(y))
         z = int(round(z))
-        assert z == img[y][x], "Depth values do not match joint coordinates"
+        Cz = 0.0035 # intrinsic camera calibration parameter
+        u = x / Cz + 160
+        v = -y / Cz + 120
+        assert z == img[v][u], "Depth values do not match joint coordinates"
         for j, offset in enumerate(offsets): 
             delta_x, delta_y = offset
             offset_d = x + delta_x, y + delta_y
@@ -47,7 +50,7 @@ def get_feature_vector(img, offsets, joints):
         ft_vector[i] = joint + feature # append real joint position to feature vector  
     return ft_vector
 
-def random_sample_offsets():
+def random_sample_offsetsC():
     """
     This function randomly samples offset values for the feature response function
     """
