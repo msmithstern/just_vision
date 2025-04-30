@@ -1,4 +1,5 @@
 import h5py
+from tqdm import tqdm 
 import numpy as np
 from skimage.transform import resize
 from sklearn.ensemble import RandomForestRegressor
@@ -28,39 +29,131 @@ def project_to_image(depth_img, joints):
     v = -fy * y / z + cy  # Flip vertical axis to match image coordinates
     return np.clip(u, 0, depth_img.shape[1]-1), np.clip(v, 0, depth_img.shape[0]-1)
 
+def bilinear_interpolate_depth(img, u, v):
+    """
+    Performs bilinear interpolation for subpixel depth at (u, v) in the depth image.
+    (u, v) can be float — img is accessed as [v][u], i.e., row-major.
+    """
+    h, w = img.shape
+
+    # Clamp to valid range for interpolation
+    if u < 0 or u >= w - 1 or v < 0 or v >= h - 1:
+        return 0.0  # or np.nan
+
+    x0 = int(np.floor(u))
+    x1 = x0 + 1
+    y0 = int(np.floor(v))
+    y1 = y0 + 1
+
+    # Get fractional parts
+    dx = u - x0
+    dy = v - y0
+
+    # Get pixel values
+    Ia = img[y0, x0]
+    Ib = img[y0, x1]
+    Ic = img[y1, x0]
+    Id = img[y1, x1]
+
+    # Interpolate
+    top = Ia * (1 - dx) + Ib * dx
+    bottom = Ic * (1 - dx) + Id * dx
+    value = top * (1 - dy) + bottom * dy
+
+    return value
+
+import numpy as np
+
+def project_to_image(depth_img, joints):
+    fx, fy = 285.63, 285.63  # Example focal length
+    cx, cy = 160, 120        # Principal point
+    x = joints[:, 0]
+    y = joints[:, 1]
+    z = joints[:, 2] + 1e-5  # prevent divide-by-zero
+    u = fx * x / z + cx
+    v = -fy * y / z + cy  # Flip vertical axis to match image coordinates
+    return np.clip(u, 0, depth_img.shape[1] - 1), np.clip(v, 0, depth_img.shape[0] - 1)
+
+def bilinear_interpolate_depth(img, u, v):
+    """
+    Performs bilinear interpolation for subpixel depth at (u, v) in the depth image.
+    (u, v) can be float — img is accessed as [v][u], i.e., row-major.
+    """
+    h, w = img.shape
+
+    # Clamp to valid range for interpolation
+    if u < 0 or u >= w - 1 or v < 0 or v >= h - 1:
+        return 0.0  # or np.nan
+
+    x0 = int(np.floor(u))
+    x1 = x0 + 1
+    y0 = int(np.floor(v))
+    y1 = y0 + 1
+
+    # Get fractional parts
+    dx = u - x0
+    dy = v - y0
+
+    # Get pixel values
+    Ia = img[y0, x0]
+    Ib = img[y0, x1]
+    Ic = img[y1, x0]
+    Id = img[y1, x1]
+
+    # Interpolate
+    top = Ia * (1 - dx) + Ib * dx
+    bottom = Ic * (1 - dx) + Id * dx
+    value = top * (1 - dy) + bottom * dy
+
+    return value
+
 def get_feature_vector(img, offsets, joints):
     """
-    This function returns a depth feature descriptor of each pixel in a joint vector  
-    using the surrouding pixels and the feature response function. it concatenates each pixel 
-    descriptor into a vector of num_joints x num_offsets x 2 (15 x 25 x 2)
+    This function returns a depth feature descriptor for each joint vector 
+    using surrounding pixels and the feature response function. It concatenates 
+    each pixel descriptor into a vector of num_joints x num_offsets x 2.
     """
-    # compute the feature response for each pixel 
     joints = np.array(joints)
-    ft_vector = np.zeros((joints.shape[0], len(offsets) + 3))
-    # for ecah joint in image 
-    image_u, image_v = project_to_image(img, joints) # project to image
-    for i, joint in enumerate(joints): 
-        # create a feature entry for every offset 
-        u = int(image_u[i])
-        v = int(image_v[i])
-        feature = np.zeros(len(offsets))
-        x, y, z = joint
-        print(z, img[v][u])
-        assert abs(z - img[v][u]) > 1e-3, "Depth values do not match joint coordinates %d %d" % (z, img[v][u])
-        for j, offset in enumerate(offsets): 
-            delta_x, delta_y = offset
-            offset_d = v + delta_y, u + delta_x
+    num_joints = joints.shape[0]
+    num_offsets = len(offsets)
+    
+    # Initialize feature vector
+    ft_vector = np.zeros((num_joints, num_offsets + 3))
+
+    # Project joints to image coordinates
+    image_u, image_v = project_to_image(img, joints)
+
+    # bilinearly interpolate depth values at projected joint locations 
+    depths = np.array([bilinear_interpolate_depth(img, u, v) for u, v in zip(image_u, image_v)])
+
+    # caluclate offsets to speed calculations
+    offsets_x = np.array([offset[0] for offset in offsets])
+    offsets_y = np.array([offset[1] for offset in offsets])
+
+    for i in range(num_joints):
+        u, v = image_u[i], image_v[i]
+        joint = joints[i]
+        depth = depths[i]
+        
+        # Calculate feature for each joint
+        feature = np.zeros(num_offsets)
+
+        for j in range(num_offsets):
+            delta_x = offsets_x[j]
+            delta_y = offsets_y[j]
+            offset_d = (v + delta_y, u + delta_x)
+
             # Ensure offsets are within image bounds
             if 0 <= offset_d[0] < img.shape[0] and 0 <= offset_d[1] < img.shape[1]:
-                feature[j] = z - img[offset_d[0], offset_d[1]]
+                feature[j] = depth - bilinear_interpolate_depth(img, offset_d[1], offset_d[0])
             else:
-                # If out of bounds, set feature to zero 
                 feature[j] = 0
-        joint = np.array(joint).reshape(1, 3)
-        feature = np.array(feature).reshape(1, -1)
+        
+        # Concatenate joint position with feature vector
         ft_vector[i] = np.hstack((joint, feature))
-        print("Shape", np.array(ft_vector[i]).shape)
+    
     return ft_vector
+
 
 def random_sample_offsets():
     """
@@ -86,32 +179,14 @@ with h5py.File('dataset/dataset/ITOP_side_train_depth_map.h5', 'r') as f_depth, 
 X_train = []
 y_train = []
 offsets = random_sample_offsets()
-index = 80
-print("plotexample image")
-joints = joints_train[index].reshape(15, 3)
-x = joints[:, 0]
-y = joints[:, 1]
-print(x)
-print(y)
-true_u, true_v = project_to_image(depth_train[index], joints)
-plt.figure(figsize=(6, 6))
-plt.imshow(depth_train[index], cmap='gray')
-plt.scatter(true_u, true_v, color='g', label='True', marker='x', s=40, alpha=0.7)
-plt.scatter(x, y, color='r', label='Predicted', marker='o', s=40, alpha=0.7)
-plt.legend()
-plt.title(f"Joint Prediction vs Ground Truth (Test inSdex {index})")
-plt.xlabel("X")
-plt.ylabel("Y")
-plt.tight_layout()
-plt.show()
 
-for i in range(len(depth_train)):
+for i in tqdm(range(len(depth_train)), desc="Generating training features", unit="item"):
     depth = depth_train[i]
     joints = joints_train[i][:, :3]
     
     # get feature vector for each joint
     joint_feature = get_feature_vector(depth, offsets, joints)
-    depth_feature = resize(depth, (320, 240), anti_aliasing=True)
+    depth_feature = resize(depth, (240, 320), anti_aliasing=True)
     X_train.append(depth_feature.flatten())
     y_train.append(joint_feature.flatten())
 # ---------- Step 2: Load test data ----------
@@ -126,10 +201,10 @@ with h5py.File('dataset/dataset/ITOP_side_test_depth_map.h5', 'r') as f_depth, \
 X_test = []
 y_test = []
 
-for i in range(len(depth_test)):
+for i in tqdm(range(len(depth_test)), desc="Generating test features", unit="item"):
     depth = depth_test[i]
     joints = joints_test[i][:, :3] # use 3d coordinates 
-    depth_vector = resize(depth, (320, 240), anti_aliasing=True)
+    depth_vector = resize(depth, (240, 320), anti_aliasing=True)
     joint_feature = get_feature_vector(depth, offsets, joints)
 
     X_test.append(depth_vector.flatten())
@@ -168,7 +243,7 @@ print("Test MSE:", mean_squared_error(y_test, y_pred))
 def predict_joints_from_image(image_path):
     print(f"Predicting joints for: {image_path}")
     depth_input = imageio.imread(image_path)
-    depth_resized = resize(depth_input, (320, 240), anti_aliasing=True).flatten()
+    depth_resized = resize(depth_input, (240, 320), anti_aliasing=True).flatten()
     full_prediction = rf.predict([depth_resized])[0]         # shape: (15 × (3 + 25) )
     predicted_joints = full_prediction[:45].reshape(15, 3)  # ignore feature vectors 
     return predicted_joints
