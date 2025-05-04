@@ -171,8 +171,8 @@ def random_sample_offsets():
 # ---------- Step 1: Load and prepare training data ----------
 
 print("Loading training data...")
-with h5py.File('dataset/dataset/ITOP_side_train_depth_map.h5', 'r') as f_depth, \
-     h5py.File('dataset/dataset/ITOP_side_train_labels.h5', 'r') as f_label:
+with h5py.File('dataset/ITOP_side_train_depth_map.h5', 'r') as f_depth, \
+     h5py.File('dataset/ITOP_side_train_labels.h5', 'r') as f_label:
     depth_train = f_depth['data'][:] if MAX_TRAIN_SAMPLES is None else f_depth['data'][:MAX_TRAIN_SAMPLES]
     joints_train = f_label['real_world_coordinates'][:] if MAX_TRAIN_SAMPLES is None else f_label['real_world_coordinates'][:MAX_TRAIN_SAMPLES]
 
@@ -192,8 +192,8 @@ for i in tqdm(range(len(depth_train)), desc="Generating training features", unit
 # ---------- Step 2: Load test data ----------
 
 print("Loading test data...")
-with h5py.File('dataset/dataset/ITOP_side_test_depth_map.h5', 'r') as f_depth, \
-     h5py.File('dataset/dataset/ITOP_side_test_labels.h5', 'r') as f_label:
+with h5py.File('dataset/ITOP_side_test_depth_map.h5', 'r') as f_depth, \
+     h5py.File('dataset/ITOP_side_test_labels.h5', 'r') as f_label:
     depth_test = f_depth['data'][:] if MAX_TEST_SAMPLES is None else f_depth['data'][:MAX_TEST_SAMPLES]
     joints_test = f_label['real_world_coordinates'][:] if MAX_TEST_SAMPLES is None else f_label['real_world_coordinates'][:MAX_TEST_SAMPLES]
 
@@ -212,10 +212,10 @@ for i in tqdm(range(len(depth_test)), desc="Generating test features", unit="ite
 
 # ---------- Step 2.5: Save train and test data to disk ----------
 
-np.save('train_features.npy', np.array(X_train))
-np.save('train_labels.npy', np.array(y_train))
-np.save('test_features.npy', np.array(X_test))
-np.save('test_labels.npy', np.array(y_test))
+# np.save('train_features.npy', np.array(X_train))
+# np.save('train_labels.npy', np.array(y_train))
+# np.save('test_features.npy', np.array(X_test))
+# np.save('test_labels.npy', np.array(y_test))
 print("Saved training and testing data to disk.")
 
 # ---------- Step 3: Train the model ----------
