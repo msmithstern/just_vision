@@ -2,6 +2,8 @@ import cv2 # opencv-based functions
 import time
 import math
 import numpy as np
+from pydub import AudioSegment
+import simpleaudio as sa
 from scipy import ndimage
 from skimage import io
 from skimage import img_as_float32, img_as_ubyte
@@ -10,10 +12,24 @@ from skimage.color import rgb2gray
 '''
 Creates an instance of the webcam by running 'python input.py'. Referenced from hw2 and cv2 documentation. 
 '''
+# NEED BELOW INSTALLS
+# pip install simpleaudio
+# pip install pydub
+# (mac)brew install ffmpeg OR (windows) 1. Download from https://ffmpeg.org/download.html 2. Add ffmpeg/bin to your system PATH.
 class webcam():
     window_name = "Final Project"
     def __init__(self, **kwargs):
         self.writeWelcome()
+        audio = AudioSegment.from_file('audio_only.mp3')
+        timestamp = 5000 #starting at 5sec 
+        cut_audio = audio[timestamp:]
+
+        player = sa.play_buffer(
+            cut_audio.raw_data, 
+            num_channels=cut_audio.channels, 
+            bytes_per_sample=cut_audio.sample_width, 
+            sample_rate=cut_audio.frame_rate
+            )
         cv2.namedWindow(self.window_name, cv2.WINDOW_AUTOSIZE)
 
         # Initialize camera
@@ -42,7 +58,7 @@ class webcam():
             cv2.imshow(self.window_name, frame)
 
             # Press 'q' to exit the loop
-            if cv2.waitKey(1) == ord('q'):
+            if cv2.waitKey(1) == ord('q') or not player.is_playing():
                 break
 
         # Release the capture and writer objects
