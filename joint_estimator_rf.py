@@ -168,56 +168,64 @@ def random_sample_offsets():
         offsets.append((x, y))
     return offsets 
 
-# ---------- Step 1: Load and prepare training data ----------
-
-print("Loading training data...")
-with h5py.File('dataset/ITOP_side_train_depth_map.h5', 'r') as f_depth, \
-     h5py.File('dataset/ITOP_side_train_labels.h5', 'r') as f_label:
-    depth_train = f_depth['data'][:] if MAX_TRAIN_SAMPLES is None else f_depth['data'][:MAX_TRAIN_SAMPLES]
-    joints_train = f_label['real_world_coordinates'][:] if MAX_TRAIN_SAMPLES is None else f_label['real_world_coordinates'][:MAX_TRAIN_SAMPLES]
-
 X_train = []
 y_train = []
-offsets = random_sample_offsets()
+if os.path.exists('offsets.npy'): 
+    print("Loading existing offsets")
+    offsets = np.load('offsets.npy')
+else: 
+    offsets = random_sample_offsets()
+    np.save('offsets.npy', offsets)
+    print("Saved offsets to disk")
 
-for i in tqdm(range(len(depth_train)), desc="Generating training features", unit="item"):
-    depth = depth_train[i]
-    joints = joints_train[i][:, :3]
-    
-    # get feature vector for each joint
-    joint_feature = get_feature_vector(depth, offsets, joints)
-    depth_feature = resize(depth, (240, 320), anti_aliasing=True)
-    X_train.append(depth_feature.flatten())
-    y_train.append(joint_feature.flatten())
+# ---------- Step 1: Load and prepare training data ----------
+if os.path.exists('train_features.npy') and os.path.exists('train_labels.npy'): 
+    print("Loading exisitng training data from disk...")
+    X_train = np.load('train_features.npy')
+    y_train = np.load('train_labels.npy')
+else:
+    print("Loading training data...")
+    with h5py.File('dataset/dataset/ITOP_side_train_depth_map.h5', 'r') as f_depth, \
+        h5py.File('dataset/dataset/ITOP_side_train_labels.h5', 'r') as f_label:
+        depth_train = f_depth['data'][:] if MAX_TRAIN_SAMPLES is None else f_depth['data'][:MAX_TRAIN_SAMPLES]
+        joints_train = f_label['real_world_coordinates'][:] if MAX_TRAIN_SAMPLES is None else f_label['real_world_coordinates'][:MAX_TRAIN_SAMPLES]
+    for i in tqdm(range(len(depth_train)), desc="Generating training features", unit="item"):
+        depth = depth_train[i]
+        joints = joints_train[i][:, :3]
+        
+        # get feature vector for each joint
+        joint_feature = get_feature_vector(depth, offsets, joints)
+        depth_feature = resize(depth, (240, 320), anti_aliasing=True)
+        X_train.append(depth_feature.flatten())
+        y_train.append(joint_feature.flatten())
+    np.save('train_features.npy', np.array(X_train))
+    np.save('train_labels.npy', np.array(y_train))
+
 # ---------- Step 2: Load test data ----------
-
-print("Loading test data...")
-with h5py.File('dataset/ITOP_side_test_depth_map.h5', 'r') as f_depth, \
-     h5py.File('dataset/ITOP_side_test_labels.h5', 'r') as f_label:
-    depth_test = f_depth['data'][:] if MAX_TEST_SAMPLES is None else f_depth['data'][:MAX_TEST_SAMPLES]
-    joints_test = f_label['real_world_coordinates'][:] if MAX_TEST_SAMPLES is None else f_label['real_world_coordinates'][:MAX_TEST_SAMPLES]
-
-
 X_test = []
 y_test = []
+if os.path.exists('test_features.npy') and os.path.exists('test_labels.npy'): 
+    print("Loading existing testing data")
+    X_train = np.load('test_features.npy')
+    y_train = np.load('test_labels.npy')
+else: 
+    print("Loading test data...")
+    with h5py.File('dataset/dataset/ITOP_side_test_depth_map.h5', 'r') as f_depth, \
+        h5py.File('dataset/dataset/ITOP_side_test_labels.h5', 'r') as f_label:
+        depth_test = f_depth['data'][:] if MAX_TEST_SAMPLES is None else f_depth['data'][:MAX_TEST_SAMPLES]
+        joints_test = f_label['real_world_coordinates'][:] if MAX_TEST_SAMPLES is None else f_label['real_world_coordinates'][:MAX_TEST_SAMPLES]
 
-for i in tqdm(range(len(depth_test)), desc="Generating test features", unit="item"):
-    depth = depth_test[i]
-    joints = joints_test[i][:, :3] # use 3d coordinates 
-    depth_vector = resize(depth, (240, 320), anti_aliasing=True)
-    joint_feature = get_feature_vector(depth, offsets, joints)
+    for i in tqdm(range(len(depth_test)), desc="Generating test features", unit="item"):
+        depth = depth_test[i]
+        joints = joints_test[i][:, :3] # use 3d coordinates 
+        depth_vector = resize(depth, (240, 320), anti_aliasing=True)
+        joint_feature = get_feature_vector(depth, offsets, joints)
 
-    X_test.append(depth_vector.flatten())
-    y_test.append(joint_feature.flatten())
-
-# ---------- Step 2.5: Save train and test data to disk ----------
-
-# np.save('train_features.npy', np.array(X_train))
-# np.save('train_labels.npy', np.array(y_train))
-# np.save('test_features.npy', np.array(X_test))
-# np.save('test_labels.npy', np.array(y_test))
-print("Saved training and testing data to disk.")
-
+        X_test.append(depth_vector.flatten())
+        y_test.append(joint_feature.flatten())
+    np.save('test_features.npy', np.array(X_test))
+    np.save('test_labels.npy', np.array(y_test))
+    print("Saved test data")
 # ---------- Step 3: Train the model ----------
 
 model_path = 'random_forest_joint_estimator.pkl'
@@ -227,7 +235,7 @@ if os.path.exists(model_path):
     rf = joblib.load(model_path)
 else:
     print("Training RandomForestRegressor...")
-    rf = RandomForestRegressor(n_estimators=50, random_state=42, n_jobs=-1)
+    rf = RandomForestRegressor(n_estimators=10, random_state=42, n_jobs=-1, verbose=2)
     rf.fit(X_train, y_train)
     joblib.dump(rf, model_path)
     print(f"Model trained and saved to {model_path}.")
