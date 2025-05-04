@@ -130,80 +130,80 @@ def classify_pixels(depths, depth_offsets, rf):
     return segm_maps
 
 # MEAN SHIFT CLUSTERING 
-# def estimate_joints(depths, segm_maps, joint_offsets):
-#     """
-#     Estimate 3D joint positions using mean shift clustering on offset-corrected pixels.
-#     Returns: Array of shape (num_joints, 3)
-#     """
-#     all_joints = []
-#     for depth, segm in tqdm.tqdm(zip(depths, segm_maps), desc="Estimating joints", total=len(depths)):
-#         num_joints = max(joint_offsets.keys()) + 1
-#         estimated_joints = []
-
-#         for joint_id in range(num_joints):
-#             est_points = []
-#             mask = (segm == (joint_id + 1))  # skip if label not present
-#             xs, ys = np.where(mask)
-#             zs = depth[xs, ys]
-#             valid = zs > 0
-#             xs, ys, zs = xs[valid], ys[valid], zs[valid]
-#             if len(xs) == 0:
-#                 estimated_joints.append(np.array([0, 0, 0]))
-#                 continue
-
-#             pixel_coords = np.stack([xs, ys, zs], axis=1)
-#             est_points = pixel_coords + joint_offsets[joint_id]
-
-#             # Downsample if needed
-#             if len(est_points) > 500:
-#                 idx = np.random.choice(len(est_points), 500, replace=False)
-#                 est_points = est_points[idx]
-
-#             ms = MeanShift(bandwidth=20)
-#             ms.fit(est_points)
-#             estimated_joints.append(ms.cluster_centers_[0])
-#         all_joints.append(np.array(estimated_joints))
-#     return np.array(all_joints)
-
-#K MEANS CLUSTERING 
-
 def estimate_joints(depths, segm_maps, joint_offsets):
     """
-    Estimate 3D joint positions using KMeans (1 cluster) on offset-corrected pixels.
-    Returns: Array of shape (num_images, num_joints, 3)
+    Estimate 3D joint positions using mean shift clustering on offset-corrected pixels.
+    Returns: Array of shape (num_joints, 3)
     """
     all_joints = []
     for depth, segm in tqdm.tqdm(zip(depths, segm_maps), desc="Estimating joints", total=len(depths)):
-        num_joints = max(joint_offsets.keys()) + 1
+        num_joints = 24
         estimated_joints = []
 
         for joint_id in range(num_joints):
-            mask = (segm == (joint_id + 1))
+            est_points = []
+            mask = (segm == (joint_id + 1))  # skip if label not present
             xs, ys = np.where(mask)
             zs = depth[xs, ys]
-
-            # Remove pixels with zero depth
-            valid = (zs > 0) & (zs < 10000)
-            if np.count_nonzero(valid) == 0 or joint_id not in joint_offsets:
+            valid = zs > 0
+            xs, ys, zs = xs[valid], ys[valid], zs[valid]
+            if len(xs) == 0:
                 estimated_joints.append(np.array([0, 0, 0]))
                 continue
 
-            xs, ys, zs = xs[valid], ys[valid], zs[valid]
             pixel_coords = np.stack([xs, ys, zs], axis=1)
-            est_points = pixel_coords + joint_offsets[joint_id]  # apply learned offset
+            est_points = pixel_coords + joint_offsets[joint_id]
 
-            # Downsample for efficiency
+            # Downsample if needed
             if len(est_points) > 500:
                 idx = np.random.choice(len(est_points), 500, replace=False)
                 est_points = est_points[idx]
 
-            # Cluster using KMeans with 1 cluster (just finds the centroid)
-            kmeans = KMeans(n_clusters=1, random_state=42, n_init='auto')
-            kmeans.fit(est_points)
-            estimated_joints.append(kmeans.cluster_centers_[0])
-
+            ms = MeanShift(bandwidth=20)
+            ms.fit(est_points)
+            estimated_joints.append(ms.cluster_centers_[0])
         all_joints.append(np.array(estimated_joints))
     return np.array(all_joints)
+
+#K MEANS CLUSTERING 
+
+# def estimate_joints(depths, segm_maps, joint_offsets):
+#     """
+#     Estimate 3D joint positions using KMeans (1 cluster) on offset-corrected pixels.
+#     Returns: Array of shape (num_images, num_joints, 3)
+#     """
+#     all_joints = []
+#     for depth, segm in tqdm.tqdm(zip(depths, segm_maps), desc="Estimating joints", total=len(depths)):
+#         num_joints = 24
+#         estimated_joints = []
+
+#         for joint_id in range(num_joints):
+#             mask = (segm == (joint_id + 1))
+#             xs, ys = np.where(mask)
+#             zs = depth[xs, ys]
+
+#             # Remove pixels with zero depth
+#             valid = (zs > 0) & (zs < 10000)
+#             if np.count_nonzero(valid) == 0 or joint_id not in joint_offsets:
+#                 estimated_joints.append(np.array([0, 0, 0]))
+#                 continue
+
+#             xs, ys, zs = xs[valid], ys[valid], zs[valid]
+#             pixel_coords = np.stack([xs, ys, zs], axis=1)
+#             est_points = pixel_coords + joint_offsets[joint_id]  # apply learned offset
+
+#             # Downsample for efficiency
+#             if len(est_points) > 500:
+#                 idx = np.random.choice(len(est_points), 500, replace=False)
+#                 est_points = est_points[idx]
+
+#             # Cluster using KMeans with 1 cluster (just finds the centroid)
+#             kmeans = KMeans(n_clusters=1, random_state=42, n_init='auto')
+#             kmeans.fit(est_points)
+#             estimated_joints.append(kmeans.cluster_centers_[0])
+
+#         all_joints.append(np.array(estimated_joints))
+#     return np.array(all_joints)
 
 
 def plot_depth_with_joints(depth_frame, joints_gt, joints_pred=None):
@@ -246,9 +246,9 @@ def main():
     if not os.path.exists("pose_classifier.pkl"): 
         print("Loading training data...")
         train_depth, train_segm, train_joints = load_data() # load_data()
-        train_depth = train_depth[:50]
-        train_segm = train_segm[:50]
-        train_joints = train_joints[:50]
+        # train_depth = train_depth[:50]
+        # train_segm = train_segm[:50]
+        # train_joints = train_joints[:50]
         train_depth = normalize_depth(train_depth) # replace with max function 
         # train the pixel classifier using the training data and labels 
         print("Generating random offsets...")
@@ -263,6 +263,7 @@ def main():
         np.save("joint_offsets.npy", joint_offsets)
         np.save("depth_offset.npy", depth_offsets)
     else: 
+        train_depth, train_segm, train_joints = load_data()
         rf = joblib.load("pose_classifier.pkl")
         joint_offsets = np.load("joint_offsets.npy", allow_pickle=True)
         depth_offsets = np.load("depth_offsets.npy", allow_pickle=True)
