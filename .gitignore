@@ -1,2 +1,10 @@
 /dataset
 /dataset.zip
+/offsets.npy
+/segm.npy
+/joints3d.npy
+/depth.npy
+/pose_classifier.pkl
+/joint_offsets.npy
+/depth_offsets.npy
+/SURREAL
