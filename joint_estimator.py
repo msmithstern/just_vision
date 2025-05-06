@@ -346,6 +346,8 @@ def main():
     else: 
         train_depth, train_segm, train_joints = load_data()
         rf = joblib.load("pose_classifier.pkl")
+        print("Learning joint offsets...")
+        joint_offsets = learn_offsets(train_depth, train_segm, train_joints)
         depth_offsets = np.load("depth_offsets.npy", allow_pickle=True)
     print("Testing...")
     test_depth, test_segm, test_joints = train_depth[:10], train_segm[:10], train_joints[:10] # load_data()
