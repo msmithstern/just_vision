@@ -130,25 +130,22 @@ def train_random_forest_classifier(depth_imgs, segm_maps, offsets):
     rf.fit(X_train, y_train)
     return rf
 
-def classify_pixels(depths, depth_offsets, rf):
+
+def classify_pixels(depths, gt_segm_maps, depth_offsets, rf):
     segm_maps = []
-    for depth in tqdm.tqdm(depths, desc="Classifying pixels", total=len(depths)):
+    for depth, gt_segm_map in tqdm.tqdm(zip(depths, gt_segm_maps), desc="Classifying pixels", total=len(depths)):
         h, w = depth.shape
         features = []
-        y_coords, x_coords = np.where(depth <= 1000)  # Find all non-background pixels
-
-        for x, y in zip(x_coords, y_coords):
-            feat = get_pixel_feature(depth, depth_offsets, x, y)
-            features.append(feat)
-
+        for x in range(h):
+            for y in range(w):
+                feat = get_pixel_feature(depth, depth_offsets, x, y)
+                features.append(feat)
         features = np.array(features)
         pred_labels = rf.predict(features)
-
-        # Create an empty segmentation map and assign predicted labels to non-background pixels
-        segm_map = np.zeros((h, w), dtype=int)
-        segm_map[x_coords, y_coords] = pred_labels  # Assign predictions to the corresponding pixels
+        segm_map = pred_labels.reshape((h, w))
+        # Zero out all entries that are 0 in the ground truth segmentation map
+        segm_map[gt_segm_map == 0] = 0
         segm_maps.append(segm_map)
-
     return segm_maps
 # MEAN SHIFT CLUSTERING 
 # def estimate_joints(depths, segm_maps, joint_offsets):
@@ -354,7 +351,7 @@ def main():
     #test_depth, test_segm = normalize_depth(test_depth)
     # test! 
     print("Classifying pixels...")
-    pred_segm = classify_pixels(test_depth, depth_offsets, rf)
+    pred_segm = classify_pixels(test_depth, test_segm, depth_offsets, rf)
     print("Estimtating joints...")
     pred_joints = estimate_joints(test_depth, pred_segm, joint_offsets)
     plot_segmentation_comparison(test_segm[0], pred_segm[0], num_joints=24, filename="segmentation_comparison.png")
