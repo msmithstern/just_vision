@@ -8,3 +8,5 @@
 /joint_offsets.npy
 /depth_offsets.npy
 /SURREAL
+/pose_dataset
+/joints2d.npy

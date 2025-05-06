@@ -8,46 +8,10 @@ import tqdm
 from sklearn.cluster import KMeans
 from sklearn.metrics import mean_squared_error
 import tensorflow as tf
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 """
 This class contains the code for training a random forest classifier to classify each pixel 
 """
-# def get_pixel_feature(img, offsets):
-#     """
-#     Vectorized function to compute depth feature descriptors for all pixels.
-#     Optimized to handle entire image in one go.
-#     """
-#     h, w = img.shape
-#     d = img  # All depth values at once
-
-#     # Initialize feature matrix for all pixels and offsets
-#     ft_matrix = np.zeros((h, w, len(offsets)))
-
-#     # Create grid of x, y coordinates for the whole image
-#     x_grid, y_grid = np.meshgrid(np.arange(h), np.arange(w), indexing='ij')
-
-#     for i, (delta_x, delta_y) in enumerate(offsets):
-#         # Compute neighbor coordinates for the current offset
-#         neighbor_x = x_grid + delta_x
-#         neighbor_y = y_grid + delta_y
-
-#         # Ensure we don't go out of bounds (masking invalid indices)
-#         valid_mask = (neighbor_x >= 0) & (neighbor_x < h) & (neighbor_y >= 0) & (neighbor_y < w)
-
-#         # Convert the indices to TensorFlow tensors with the correct dtype
-#         neighbor_x_tensor = tf.convert_to_tensor(neighbor_x[valid_mask], dtype=tf.int32)
-#         neighbor_y_tensor = tf.convert_to_tensor(neighbor_y[valid_mask], dtype=tf.int32)
-
-#         # Indexing using tf.gather to retrieve valid neighboring values
-#         valid_neighbors = tf.zeros_like(img, dtype=tf.float32)
-
-#         # Use tf.gather for proper tensor indexing
-#         # Use tf.gather to retrieve elements from img using the valid neighbor indices
-#         valid_neighbors = tf.gather(img, neighbor_x_tensor, axis=0)  # Gather along the height axis (x)
-#         valid_neighbors = tf.gather(valid_neighbors, neighbor_y_tensor, axis=1)  # Gather along the width axis (y)
-
-#         # Compute the feature for each pixel (d - valid_neighbors)
-#         ft_matrix[:, :, i] = d - valid_neighbors
-#     return ft_matrix
 
 def get_pixel_feature(img, offsets, x, y):
     """
@@ -86,22 +50,6 @@ def get_pixel_feature(img, offsets, x, y):
     d_v[v_valid] = img[v_coords_rounded[v_valid, 0], v_coords_rounded[v_valid, 1]]
 
     return (d_u - d_v) / d
-
-    # """
-    # This function returns a depth feature descriptor for a pixel
-    # """
-    # # compute the feature response for each pixel 
-    # ft_vector = np.zeros(len(offsets))
-    # h, w = img.shape
-    # for i, offset in enumerate(offsets): 
-    #     d = img[x][y]
-    #     delta_x, delta_y = offset
-    #     if 0 <= x + delta_x < h and 0 <=  y + delta_y < w:
-    #         ft_vector[i] = d - img[x + delta_x, y + delta_y]
-    #     else: 
-    #         ft_vector[i] = 0
-    # return ft_vector
-
 
 def random_sample_offsets():
     num_offsets = 50
@@ -189,6 +137,8 @@ def classify_pixels(depths, depth_offsets, rf):
         features = []
         for x in range(h):
             for y in range(w):
+                if depth[x, y] == 0:
+                    continue
                 feat = get_pixel_feature(depth, depth_offsets, x, y)
                 features.append(feat)
         features = np.array(features)
@@ -280,6 +230,33 @@ def estimate_joints(depths, segm_maps, joint_offsets):
         all_joints.append(np.array(estimated_joints))
     return np.array(all_joints)
 
+def plot_confusion_matrix(true_segm, pred_segm, num_classes, filename="confusion_matrix.png"):
+    """
+    Plot confusion matrix for pixel classification from segmentation masks.
+    true_segm, pred_segm: 2D arrays of ground truth and predicted segmentation maps.
+    num_classes: Number of classes including background (e.g., 25 for 24 joints + background).
+    """
+    # Flatten the segmentation masks to 1D arrays
+    y_true = true_segm.flatten()
+    y_pred = pred_segm.flatten()
+
+    # Compute confusion matrix
+    cm = confusion_matrix(y_true, y_pred, labels=np.arange(num_classes))
+
+    # Create confusion matrix display
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=np.arange(num_classes))
+
+    # Plot the confusion matrix
+    fig, ax = plt.subplots(figsize=(10, 10))
+    disp.plot(ax=ax, cmap='viridis', xticks_rotation='vertical')
+    plt.title("Confusion Matrix (Pixel Classification)")
+    
+    # Save the plot
+    plt.savefig(filename)
+    plt.close()
+
+    print(f"Saved confusion matrix to {filename}")
+
 
 def load_data():
     """
@@ -355,19 +332,17 @@ def main():
         # train the pixel classifier using the training data and labels 
         print("Generating random offsets...")
         depth_offsets = random_sample_offsets()
-        print("Learning joint offsets...")
-        joint_offsets = learn_offsets(train_depth, train_segm, train_joints)
         print("Training RF classifier...")
         rf = train_random_forest_classifier(train_depth, train_segm, depth_offsets)
         # learn offsets for joint locations 
         # save
         joblib.dump(rf, "pose_classifier.pkl")
-        np.save("joint_offsets.npy", joint_offsets, allow_pickle=True)
         np.save("depth_offset.npy", depth_offsets, allow_pickle=True)
     else: 
         train_depth, train_segm, train_joints = load_data()
         rf = joblib.load("pose_classifier.pkl")
-        joint_offsets = np.load("joint_offsets.npy", allow_pickle=True)
+        print("Learning joint offsets...")
+        joint_offsets = learn_offsets(train_depth, train_segm, train_joints)
         depth_offsets = np.load("depth_offsets.npy", allow_pickle=True)
     print("Testing...")
     test_depth, test_segm, test_joints = train_depth[:10], train_segm[:10], train_joints[:10] # load_data()
@@ -380,13 +355,14 @@ def main():
     plot_segmentation_comparison(test_segm[0], pred_segm[0], num_joints=24, filename="segmentation_comparison.png")
     plot_test_and_pred_joints(test_depth[0], test_segm[0], test_joints[0], pred_joints[0])
     # save rf, joint_offsets, depth_offsets to disk
-
+    plot_confusion_matrix(test_segm[0], pred_segm[0], num_classes=25, filename="confusion_matrix.png")
     # Flatten segmentation maps for pixel-wise comparison
     segm_mse = []
     for gt, pred in zip(test_segm, pred_segm):
         gt_flat = gt.flatten()
         pred_flat = pred.flatten()
         segm_mse.append(mean_squared_error(gt_flat, pred_flat))
+
 
     avg_segm_mse = np.mean(segm_mse)
     print(f"📊 Mean Squared Error (Segmentation Maps): {avg_segm_mse:.4f}")
