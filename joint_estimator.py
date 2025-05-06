@@ -1,4 +1,3 @@
-
 import numpy as np 
 import joblib
 from sklearn.ensemble import RandomForestClassifier
@@ -8,58 +7,121 @@ import matplotlib.pyplot as plt
 import tqdm
 from sklearn.cluster import KMeans
 from sklearn.metrics import mean_squared_error
+import tensorflow as tf
 """
 This class contains the code for training a random forest classifier to classify each pixel 
 """
-def find_valid_pairs(root_dir):
-    files = os.listdir(root_dir)
-    depth_files = [f for f in files if f.endswith("_depth.mat")]
-    segm_files  = [f for f in files if f.endswith("_segm.mat")]
+# def get_pixel_feature(img, offsets):
+#     """
+#     Vectorized function to compute depth feature descriptors for all pixels.
+#     Optimized to handle entire image in one go.
+#     """
+#     h, w = img.shape
+#     d = img  # All depth values at once
 
-    depth_bases = {f.replace("_depth.mat", "") for f in depth_files}
-    segm_bases  = {f.replace("_segm.mat", "") for f in segm_files}
-    common_bases = sorted(depth_bases & segm_bases)
+#     # Initialize feature matrix for all pixels and offsets
+#     ft_matrix = np.zeros((h, w, len(offsets)))
 
-    pairs = []
-    for base in common_bases:
-        print(f"🔍 Found pair: {base}")
-        dpath = os.path.join(root_dir, base + "_depth.mat")
-        spath = os.path.join(root_dir, base + "_segm.mat")
-        pairs.append((dpath, spath))
+#     # Create grid of x, y coordinates for the whole image
+#     x_grid, y_grid = np.meshgrid(np.arange(h), np.arange(w), indexing='ij')
 
-    return pairs
+#     for i, (delta_x, delta_y) in enumerate(offsets):
+#         # Compute neighbor coordinates for the current offset
+#         neighbor_x = x_grid + delta_x
+#         neighbor_y = y_grid + delta_y
+
+#         # Ensure we don't go out of bounds (masking invalid indices)
+#         valid_mask = (neighbor_x >= 0) & (neighbor_x < h) & (neighbor_y >= 0) & (neighbor_y < w)
+
+#         # Convert the indices to TensorFlow tensors with the correct dtype
+#         neighbor_x_tensor = tf.convert_to_tensor(neighbor_x[valid_mask], dtype=tf.int32)
+#         neighbor_y_tensor = tf.convert_to_tensor(neighbor_y[valid_mask], dtype=tf.int32)
+
+#         # Indexing using tf.gather to retrieve valid neighboring values
+#         valid_neighbors = tf.zeros_like(img, dtype=tf.float32)
+
+#         # Use tf.gather for proper tensor indexing
+#         # Use tf.gather to retrieve elements from img using the valid neighbor indices
+#         valid_neighbors = tf.gather(img, neighbor_x_tensor, axis=0)  # Gather along the height axis (x)
+#         valid_neighbors = tf.gather(valid_neighbors, neighbor_y_tensor, axis=1)  # Gather along the width axis (y)
+
+#         # Compute the feature for each pixel (d - valid_neighbors)
+#         ft_matrix[:, :, i] = d - valid_neighbors
+#     return ft_matrix
 
 def get_pixel_feature(img, offsets, x, y):
     """
-    This function returns a depth feature descriptor for a pixel
+    Fast vectorized version of pixel-wise depth-invariant features.
     """
-    # compute the feature response for each pixel 
-    ft_vector = np.zeros(len(offsets))
     h, w = img.shape
-    for i, offset in enumerate(offsets): 
-        d = img[x][y]
-        delta_x, delta_y = offset
-        if 0 <= x + delta_x < h and 0 <=  y + delta_y < w:
-            ft_vector[i] = d - img[x + delta_x, y + delta_y]
-        else: 
-            ft_vector[i] = 0
-    return ft_vector
+    d = img[x, y]
+    if d == 0:
+        return np.zeros(len(offsets), dtype=np.float32)
+
+    offsets = np.array(offsets)  # shape: (N, 2, 2)
+    u_offsets = offsets[:, 0, :] / d  # shape: (N, 2)
+    v_offsets = offsets[:, 1, :] / d
+
+    # Compute target coordinates
+    u_coords = np.stack([x + u_offsets[:, 0], y + u_offsets[:, 1]], axis=1)  # (N, 2)
+    v_coords = np.stack([x + v_offsets[:, 0], y + v_offsets[:, 1]], axis=1)
+
+    # Round to nearest integer (nearest neighbor sampling)
+    u_coords_rounded = np.round(u_coords).astype(int)
+    v_coords_rounded = np.round(v_coords).astype(int)
+
+    def valid_sample(coords):
+        return (
+            (0 <= coords[:, 0]) & (coords[:, 0] < h) &
+            (0 <= coords[:, 1]) & (coords[:, 1] < w)
+        )
+
+    u_valid = valid_sample(u_coords_rounded)
+    v_valid = valid_sample(v_coords_rounded)
+
+    d_u = np.zeros(len(offsets), dtype=np.float32)
+    d_v = np.zeros(len(offsets), dtype=np.float32)
+
+    d_u[u_valid] = img[u_coords_rounded[u_valid, 0], u_coords_rounded[u_valid, 1]]
+    d_v[v_valid] = img[v_coords_rounded[v_valid, 0], v_coords_rounded[v_valid, 1]]
+
+    return (d_u - d_v) / d
+
+    # """
+    # This function returns a depth feature descriptor for a pixel
+    # """
+    # # compute the feature response for each pixel 
+    # ft_vector = np.zeros(len(offsets))
+    # h, w = img.shape
+    # for i, offset in enumerate(offsets): 
+    #     d = img[x][y]
+    #     delta_x, delta_y = offset
+    #     if 0 <= x + delta_x < h and 0 <=  y + delta_y < w:
+    #         ft_vector[i] = d - img[x + delta_x, y + delta_y]
+    #     else: 
+    #         ft_vector[i] = 0
+    # return ft_vector
+
 
 def random_sample_offsets():
-    """
-    This function randomly samples offset values for the feature response function
-    """
-    num_offsets = 100 # number of offsets to sample, 
-    offset_threshold = 30 # highest offset value 
+    num_offsets = 50
+    offset_threshold = 30
     offsets = []
-    for _ in range(num_offsets): 
-        x = np.random.randint(-1 * (offset_threshold + 1), offset_threshold + 1)
-        y = np.random.randint(-1 * (offset_threshold + 1), offset_threshold + 1)
-        offsets.append((x, y))
-    return offsets 
+    for _ in range(num_offsets):
+        u = (np.random.randint(-offset_threshold, offset_threshold + 1),
+             np.random.randint(-offset_threshold, offset_threshold + 1))
+        v = (np.random.randint(-offset_threshold, offset_threshold + 1),
+             np.random.randint(-offset_threshold, offset_threshold + 1))
+        offsets.append((u, v))
+    return offsets
 
-def normalize_depth(depth):
-    return depth 
+def normalize_depth(depth_maps):
+    # Compute min and max per map along the spatial dimensions (H and W)
+    min_val = tf.reduce_min(depth_maps, axis=[1, 2], keepdims=True)
+    max_val = tf.reduce_max(depth_maps, axis=[1, 2], keepdims=True)
+    
+    # Normalize each depth map (element-wise)
+    return (depth_maps - min_val) / (max_val - min_val + 1e-6)
 
 def learn_offsets(depths, segms, joints3ds):
     """
@@ -71,7 +133,13 @@ def learn_offsets(depths, segms, joints3ds):
     for depth, segm, joints in zip(depths, segms, joints3ds):
         h, w = depth.shape
         for joint_id in range(joints.shape[0]):
-            joint_pos = joints[joint_id]  # (x, y, z) in 3D
+            joint_pos = joints[joint_id]  # (x, y) in 2D
+            if(joint_pos[0] < 0 or joint_pos[1] < 0 or joint_pos[0] >= h or joint_pos[1] >= w):
+                print(f"Joint {joint_id} out of bounds: {joint_pos}")
+                joint_pos_z = 0 # out of bounds depth set to 0 
+            else:
+                joint_pos_z = depth[int(joint_pos[0]), int(joint_pos[1])]
+            joint_pos = np.array([joint_pos[0], joint_pos[1], joint_pos_z])
             mask = (segm == (joint_id + 1))  # labels assumed to be 1-indexed for body parts
             xs, ys = np.where(mask)
             for x, y in zip(xs, ys):
@@ -137,7 +205,7 @@ def classify_pixels(depths, depth_offsets, rf):
 #     """
 #     all_joints = []
 #     for depth, segm in tqdm.tqdm(zip(depths, segm_maps), desc="Estimating joints", total=len(depths)):
-#         num_joints = max(joint_offsets.keys()) + 1
+#         num_joints = 24
 #         estimated_joints = []
 
 #         for joint_id in range(num_joints):
@@ -148,20 +216,27 @@ def classify_pixels(depths, depth_offsets, rf):
 #             valid = zs > 0
 #             xs, ys, zs = xs[valid], ys[valid], zs[valid]
 #             if len(xs) == 0:
-#                 estimated_joints.append(np.array([0, 0, 0]))
+#                 estimated_joints.append(np.array([0, 0, 0])) # joint not found, append dummy position
 #                 continue
 
 #             pixel_coords = np.stack([xs, ys, zs], axis=1)
 #             est_points = pixel_coords + joint_offsets[joint_id]
 
-#             # Downsample if needed
+#             # Downsample if needed -> could be problematic 
+#             print("number of estimated points:", len(est_points))
 #             if len(est_points) > 500:
 #                 idx = np.random.choice(len(est_points), 500, replace=False)
 #                 est_points = est_points[idx]
 
-#             ms = MeanShift(bandwidth=20)
+#             ms = MeanShift(bandwidth=20) # experiment with this value 
 #             ms.fit(est_points)
-#             estimated_joints.append(ms.cluster_centers_[0])
+#             labels = ms.labels_
+#             cluster_sizes = np.bincount(labels)
+#             largest_cluster_idx = cluster_sizes.argmax()
+#             best_joint = ms.cluster_centers_[largest_cluster_idx]
+#             print("number of clusters: ", len(ms.cluster_centers_))
+#             estimated_joints.append(best_joint)
+#             # estimated_joints.append(ms.cluster_centers_[0]) # might not always be index 0 
 #         all_joints.append(np.array(estimated_joints))
 #     return np.array(all_joints)
 
@@ -174,7 +249,7 @@ def estimate_joints(depths, segm_maps, joint_offsets):
     """
     all_joints = []
     for depth, segm in tqdm.tqdm(zip(depths, segm_maps), desc="Estimating joints", total=len(depths)):
-        num_joints = max(joint_offsets.keys()) + 1
+        num_joints = 24
         estimated_joints = []
 
         for joint_id in range(num_joints):
@@ -198,7 +273,7 @@ def estimate_joints(depths, segm_maps, joint_offsets):
                 est_points = est_points[idx]
 
             # Cluster using KMeans with 1 cluster (just finds the centroid)
-            kmeans = KMeans(n_clusters=1, random_state=42, n_init='auto')
+            kmeans = KMeans(n_clusters=1, random_state=42, n_init=10)
             kmeans.fit(est_points)
             estimated_joints.append(kmeans.cluster_centers_[0])
 
@@ -206,73 +281,104 @@ def estimate_joints(depths, segm_maps, joint_offsets):
     return np.array(all_joints)
 
 
-def plot_depth_with_joints(depth_frame, joints_gt, joints_pred=None):
-    fx = fy = 1050.0
-    cx, cy = 160.0, 120.0
-
-    plt.figure()
-    plt.imshow(depth_frame, cmap="gray")
-
-    if joints_gt is not None:
-        valid_gt = joints_gt[:, 2] > 0
-        u_gt = (joints_gt[valid_gt, 0] * fx / joints_gt[valid_gt, 2]) + cx
-        v_gt = (joints_gt[valid_gt, 1] * fy / joints_gt[valid_gt, 2]) + cy
-        plt.scatter(u_gt, v_gt, c="g", label="Ground Truth")
-
-    if joints_pred is not None:
-        valid_pred = joints_pred[:, 2] > 0
-        u_pred = (joints_pred[valid_pred, 0] * fx / joints_pred[valid_pred, 2]) + cx
-        v_pred = (joints_pred[valid_pred, 1] * fy / joints_pred[valid_pred, 2]) + cy
-        plt.scatter(u_pred, v_pred, c="r", marker="x", label="Predicted")
-
-    plt.title("Joints on Depth Image")
-    plt.axis("off")
-    plt.legend()
-    plt.show()
-
-    plt.close()
-
 def load_data():
     """
     load from depths.npy, segms.npy, joints3d.npy"""
 
     depth = np.load("depth.npy")
     segm = np.load("segm.npy")
-    joints3d = np.load("joints3d.npy")
-    return depth, segm, joints3d
+    joints2d = np.load("joints2d.npy")
+    return depth, segm, joints2d
+
+def plot_segmentation_comparison(segm_gt, segm_pred, num_joints, filename="segmentation_comparison.png"):
+    """ Plots GT and Predicted segmentation maps side-by-side. """
+    max_label = max(np.max(segm_gt), np.max(segm_pred), num_joints) # Determine range for colormap
+    cmap = plt.get_cmap('tab20', max_label + 1) # Use a categorical colormap with enough colors
+
+    plt.figure(figsize=(12, 6))
+    plt.subplot(1, 2, 1)
+    plt.imshow(segm_gt, cmap=cmap, vmin=0, vmax=max_label)
+    plt.title(f'Ground Truth Segmentation (Labels 0-{np.max(segm_gt)})')
+    plt.axis('off')
+
+    plt.subplot(1, 2, 2)
+    plt.imshow(segm_pred, cmap=cmap, vmin=0, vmax=max_label)
+    plt.title(f'Predicted Segmentation (Labels 0-{np.max(segm_pred)})')
+    plt.axis('off')
+
+    plt.tight_layout()
+    plt.savefig(filename)
+    print(f"Saved segmentation comparison plot to {filename}")
+    plt.close()
+def plot_test_and_pred_joints(depth_mask, segmentation_mask, test_joints, pred_joints):
+    """
+    Plots depth mask with segmentation overlay and both test and predicted 2D joints.
+
+    Parameters:
+        depth_mask (np.ndarray): 2D array of depth values.
+        segmentation_mask (np.ndarray): Binary mask of the segmented region (same shape as depth_mask).
+        test_joints (np.ndarray): Ground truth joint coordinates, shape (num_joints, 3).
+        pred_joints (np.ndarray): Predicted joint coordinates, shape (num_joints, 3).
+    """
+    plt.figure(figsize=(8, 8))
+    
+    # Show depth mask
+    plt.imshow(depth_mask, cmap='gray')
+    
+    # Overlay segmentation in red (transparent)
+    masked_seg = np.ma.masked_where(segmentation_mask == 0, segmentation_mask)
+    plt.imshow(masked_seg, cmap='Reds', alpha=0.5)
+
+    # Plot test joints (in green)
+    plt.scatter(test_joints[:, 0], test_joints[:, 1], c='lime', label='Test Joints', marker='o')
+
+    # Plot predicted joints (in blue)
+    plt.scatter(pred_joints[:, 0], pred_joints[:, 1], c='dodgerblue', label='Predicted Joints', marker='x')
+
+    plt.legend()
+    plt.title("Test vs Predicted Joints on Segmented Depth Mask")
+    plt.axis('off')
+    plt.show()
 
 def main(): 
     # load the training data and labels, normalizing the data
+     # Camera intrinsics
+    fx, fy = 1050.0, 1050.0
+    cx, cy = 160.0, 120.0
     if not os.path.exists("pose_classifier.pkl"): 
         print("Loading training data...")
         train_depth, train_segm, train_joints = load_data() # load_data()
-        train_depth = normalize_depth(train_depth) # replace with max function 
+        # train_depth = train_depth[:50]
+        # train_segm = train_segm[:50]
+        # train_joints = train_joints[:50]
+        #train_depth = normalize_depth(train_depth) # replace with max function 
         # train the pixel classifier using the training data and labels 
         print("Generating random offsets...")
         depth_offsets = random_sample_offsets()
+        print("Learning joint offsets...")
+        joint_offsets = learn_offsets(train_depth, train_segm, train_joints)
         print("Training RF classifier...")
         rf = train_random_forest_classifier(train_depth, train_segm, depth_offsets)
         # learn offsets for joint locations 
-        print("Learning joint offsets...")
-        joint_offsets = learn_offsets(train_depth, train_segm, train_joints)
         # save
         joblib.dump(rf, "pose_classifier.pkl")
-        np.save("joint_offsets.npy", joint_offsets)
-        np.save("depth_offset.npy", depth_offsets)
+        np.save("joint_offsets.npy", joint_offsets, allow_pickle=True)
+        np.save("depth_offset.npy", depth_offsets, allow_pickle=True)
     else: 
         train_depth, train_segm, train_joints = load_data()
         rf = joblib.load("pose_classifier.pkl")
         joint_offsets = np.load("joint_offsets.npy", allow_pickle=True)
-        depth_offsets = np.load("depth_offset.npy", allow_pickle=True)
+        depth_offsets = np.load("depth_offsets.npy", allow_pickle=True)
     print("Testing...")
     test_depth, test_segm, test_joints = train_depth[:10], train_segm[:10], train_joints[:10] # load_data()
-    test_depth = normalize_depth(test_depth)
+    #test_depth, test_segm = normalize_depth(test_depth)
     # test! 
     print("Classifying pixels...")
     pred_segm = classify_pixels(test_depth, depth_offsets, rf)
     print("Estimtating joints...")
     pred_joints = estimate_joints(test_depth, pred_segm, joint_offsets)
-    plot_depth_with_joints(test_depth[0], test_joints[0], pred_joints[0])
+    plot_segmentation_comparison(test_segm[0], pred_segm[0], num_joints=24, filename="segmentation_comparison.png")
+    plot_test_and_pred_joints(test_depth[0], test_segm[0], test_joints[0], pred_joints[0])
     # save rf, joint_offsets, depth_offsets to disk
 
     # Flatten segmentation maps for pixel-wise comparison
