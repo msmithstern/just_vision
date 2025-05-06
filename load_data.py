@@ -10,10 +10,10 @@ def load_triplet(depth_path, segm_path, info_path):
 
         depth_arr = [v for k, v in depth_mat.items() if "depth" in k.lower()][0]
         segm_arr  = [v for k, v in segm_mat.items()  if "segm" in k.lower()][0]
-        joints3d = info_mat.get('joints3D', None)
+        joints3d = info_mat.get('joints2D', None)
 
-        if joints3d is None or joints3d.shape[0] != 3:
-            raise ValueError("Invalid or missing joints3D")
+        if joints3d is None or joints3d.shape[0] != 2:
+            raise ValueError("Invalid or missing joints2D", joints3d.shape[0])
 
         if depth_arr.ndim == 2:
             depth_arr = depth_arr[np.newaxis, ...]
@@ -21,7 +21,7 @@ def load_triplet(depth_path, segm_path, info_path):
             segm_arr = segm_arr[np.newaxis, ...]
 
         # Transpose to (T, 24, 3)
-        joints3d = np.transpose(joints3d, (2, 1, 0))  # shape: (T, 24, 3)
+        joints3d = np.transpose(joints3d, (2, 1, 0))  # shape: (T, 24, 2)
 
         # Match shortest time dimension (often depth/segm)
         T = depth_arr.shape[0]
@@ -88,5 +88,5 @@ if __name__ == "__main__":
     # Optionally save for reuse
     np.save("depth.npy", depth_all)
     np.save("segm.npy", segm_all)
-    np.save("joints3d.npy", joints3d_all)
+    np.save("joints2d.npy", joints3d_all)
     print("💾 Saved depth.npy, segm.npy, joints3d.npy")
