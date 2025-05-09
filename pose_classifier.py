@@ -50,6 +50,7 @@ def compute_score(rf, poses, target_poses):
             target_pose_id = pose_label_dict[pose]
             print(f"Pose: {pose}, ID: {target_pose_id}, Probability: {pose_probabilities[i][target_pose_id]}")
             score += pose_probabilities[i][target_pose_id]
+            pose_probabilities[i][target_pose_id] += 0.4
     score /= len(target_poses)
     return score, pose_probabilities 
 
