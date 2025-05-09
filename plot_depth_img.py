@@ -4,7 +4,7 @@ import imageio
 import matplotlib.pyplot as plt
 
 # Load the depth image
-depth_image_path = 'pose_dataset/train/y/y_2025-04-29_14-11-52.npy'  # Replace with the actual path to your depth image
+depth_image_path = 'pose-dataset/train/y/y_2025-04-29_14-13-03.npy'  # Replace with the actual path to your depth image
 depth_image = np.load(depth_image_path)
 
 # Plot the depth image using viridis colormap

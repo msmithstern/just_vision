@@ -7,6 +7,8 @@
 /pose_classifier.pkl
 /joint_offsets.npy
 /depth_offsets.npy
-/SURREAL
-/pose_dataset
+/surreal
+/pose-dataset
 /joints2d.npy
+depth_offset.npy
+joints2d.npy
