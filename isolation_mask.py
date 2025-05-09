@@ -4,7 +4,6 @@ import cv2
 import matplotlib.pyplot as plt
 from skimage import filters, measure, morphology, segmentation
 from sklearn.cluster import KMeans
-from scipy.ndimage import gaussian_filter1d
 from tqdm import tqdm
 
 
@@ -56,7 +55,7 @@ def isolate_train_data():
             if file.endswith(('npy')) and '_2025' in file:  # Adjust this condition as needed
                 file_path = os.path.join(subdir, file)
                 depth_image = np.load(file_path)
-                depth_image = depth[:384, :]  # Only the top 384 rows
+                depth_image = depth_image[:384, :]  # Only the top 384 rows
                 depth_image, person_mask, isolated = isolate_person(depth_image)
                 mask_list.append(isolated)
 
@@ -91,13 +90,21 @@ def display_all():
             print("saving best")
             np.save("example_masked_depth.npy", isolated)
         input("Press Enter to continue to the next image...")
-#isolate_train_data()
-test = np.load("pose-dataset/train/shoot-right/shoot-right_2025-04-29_14-51-35.npy")
-test = np.load("pose-dataset/train/y/y_2025-04-29_14-13-09.npy")
-fig, axs = plt.subplots(1, 1, figsize=(15, 5))
-axs.imshow(test, cmap='gray')
-plt.show()
-axs.imshow(test_two, cmap='gray')
-plt.show()
-display_all()
-display_all()
+
+def isolate_live_feed(folder_path): 
+    print("Isolating live feed")
+    masks = []
+    for filename in os.listdir(folder_path):
+        file_path = os.path.join(folder_path, filename)
+        if file_path.endswith('.npy'): 
+            depth_image = np.load(file_path)
+            depth_image = depth_image[:384, :]  # Only the top 384 rows
+            depth_image, person_mask, isolated = isolate_person(depth_image)
+            masks.append(isolated)
+    np.stack(masks)
+    return masks 
+            
+
+            
+
+

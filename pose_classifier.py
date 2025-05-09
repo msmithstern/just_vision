@@ -7,11 +7,20 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import LabelEncoder
 
-# TODO create dictionary to map labels to encodings 
 pose_labels = ["squat", "blow-right", "blow-left","point-forward", "thumb-right", "thumb-left",
                "side", "hip", "hip-forward", "hip-backward", "y", "m", "c", "a", "arm-out", "clap-right", 
                "clap-left", "point-left", "jump-right", "jump-left", "shoot-left", "shoot-right", 
                ]
+
+# the final dance poses 
+dance_poses = ["squat", "blow-right", "blow-left", "point-forward", "thumb-right", "thumb-left", "thumb-right", 
+               "side", "point-forward", "thumb-right", "thumb-left", "thumb-right", "hip", "hip-forward",
+               "hip-backward", "hip-forward", "point-forward", "thumb-right", "thumb-left", "thumb-right", 
+               "hip", "hip-forward", "hip-backward", "hip-forward", "point-forward", "thumb-right", "thumb-left",
+               "thumb-right", "side", "point-forward", "thumb-right", "thumb-left", "thumb-right", "hip", 
+               "hip-forward", "hip-backward", "hip-forward","squat", "y", "m", "c", "a", "y", "m", "c", "a",
+               "arm-out", "clap-right", "arm-out", "clap-left", "arm-out", "clap-right", "arm-out", "clap-left"]
+
 num_poses = len(pose_labels)
 pose_label_dict = {label: i for i, label in enumerate(pose_labels)}
 
@@ -67,68 +76,55 @@ def load_data():
     X_train = np.array(depths_train)
     return X_train, y_train
 
-rf = train_random_forest_classifier()
-X_test, y_test = load_data()
-sample_indices = np.random.choice(len(X_test), size=200, replace=False)
-poses, target_poses = X_test[sample_indices], y_test[sample_indices]
-score, pose_probabilities = compute_score(rf, poses, target_poses)
+def score_dance(pose_joints): 
+    print("scoring dance")
+    pose_joints = [pose.flatten() for pose in pose_joints]
+    rf = train_random_forest_classifier()
+    targets = [pose_label_dict[pose] for pose in dance_poses]
+    score, pose_probabilities = compute_score(rf, pose_joints, targets)
+    print(f"Score {score}")
+    plot_confusion_and_bar_graph(pose_probabilities, targets)
 
+def plot_confusion_and_bar_graph(pose_probabilities, target_poses): 
+    n_classes = 22
+    # Create a confusion matrix considering probabilities
+    cm = np.zeros((n_classes, n_classes))
+    # Plot the confusion matrix with color gradients
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=False, fmt='.2f', cmap='viridis', cbar=True, square=True, xticklabels=np.arange(n_classes), yticklabels=np.arange(n_classes))
 
-# Example: Generate random predictions and true labels for a pose classification problem
-n_classes = 22  # Let's assume 5 classes for pose classification
+    # Add title and labels
+    plt.title("Confusion Matrix with Pose Probabilities")
+    plt.xlabel("Predicted Pose")
+    plt.ylabel("True Pose")
+    plt.show()
 
-# Generate random true labels (0 to n_classes-1)
-y_true = target_poses
+    # get labels
+    labels = []
+    for probs, true_label in zip(pose_probabilities, target_poses): 
+        labels.append(probs[true_label])
 
-# Generate random predicted probabilities for each class (size: n_samples x n_classes)
-y_pred = pose_probabilities
+    # Corresponding string annotations (same length as labels)
+    class_totals = {}
+    for value, name in zip(labels, target_poses):
+        if name not in class_totals:
+            class_totals[name] = []
+        class_totals[name].append(value)
+    # Compute average for each class
+    aggregated_values = {name: np.mean(vals) for name, vals in class_totals.items()}
 
-# Normalize the predicted probabilities (they might not sum to 1)
-y_pred /= y_pred.sum(axis=1, keepdims=True)
+    # Plotting
+    unique_classes = list(pose_labels[key] for key in aggregated_values.keys())
+    values = [aggregated_values[name] for name in aggregated_values.keys()]
 
-# Create a confusion matrix considering probabilities
-cm = np.zeros((n_classes, n_classes))
+    plt.figure(figsize=(10, 6))
+    bars = plt.bar(unique_classes, values)
+    plt.xticks(rotation = 60, fontsize=6)  
+    # label axes
+    plt.xlabel('Pose')
+    plt.ylabel('Average Score')
+    plt.title('Average Score per Pose')
+    plt.ylim(0, 1.1)
 
-# Loop through each sample and add probabilities to the confusion matrix
-for true_label, probs in zip(y_true, y_pred):
-    for predicted_label in range(n_classes):
-        cm[true_label, predicted_label] += probs[predicted_label]
+    plt.show()
 
-# Plot the confusion matrix with color gradients
-plt.figure(figsize=(8, 6))
-sns.heatmap(cm, annot=False, fmt='.2f', cmap='viridis', cbar=True, square=True, xticklabels=np.arange(n_classes), yticklabels=np.arange(n_classes))
-
-# Add title and labels
-plt.title("Confusion Matrix with Pose Probabilities")
-plt.xlabel("Predicted Pose")
-plt.ylabel("True Pose")
-plt.show()
-
-# get labels
-labels = []
-for probs, true_label in zip(pose_probabilities, target_poses): 
-    labels.append(probs[true_label])
-
-# Corresponding string annotations (same length as labels)
-class_totals = {}
-for value, name in zip(labels, target_poses):
-    if name not in class_totals:
-        class_totals[name] = []
-    class_totals[name].append(value)
-# Compute average for each class
-aggregated_values = {name: np.mean(vals) for name, vals in class_totals.items()}
-
-# Plotting
-unique_classes = list(pose_labels[key] for key in aggregated_values.keys())
-values = [aggregated_values[name] for name in aggregated_values.keys()]
-
-plt.figure(figsize=(10, 6))
-bars = plt.bar(unique_classes, values)
-plt.xticks(rotation = 60, fontsize=6)  
-# Label axes
-plt.xlabel('Pose')
-plt.ylabel('Average Score')
-plt.title('Average Score per Pose')
-plt.ylim(0, 1.1)
-
-plt.show()
