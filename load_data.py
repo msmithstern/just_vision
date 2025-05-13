@@ -2,43 +2,41 @@ import os
 import numpy as np
 import scipy.io
 
+"""
+Used to download the SURREAL dataset into separate npy files 
+"""
 def load_triplet(depth_path, segm_path, info_path):
     try:
+        # load mat files 
         depth_mat = scipy.io.loadmat(depth_path)
         segm_mat  = scipy.io.loadmat(segm_path)
         info_mat  = scipy.io.loadmat(info_path)
-
         depth_arr = [v for k, v in depth_mat.items() if "depth" in k.lower()][0]
         segm_arr  = [v for k, v in segm_mat.items()  if "segm" in k.lower()][0]
-        joints3d = info_mat.get('joints2D', None)
-
-        if joints3d is None or joints3d.shape[0] != 2:
-            raise ValueError("Invalid or missing joints2D", joints3d.shape[0])
-
+        joints2d = info_mat.get('joints2D', None)
+        # check that joints 2d is in info file 
+        if joints2d is None or joints2d.shape[0] != 2:
+            raise ValueError("Invalid or missing joints2D", joints2d.shape[0])
         if depth_arr.ndim == 2:
             depth_arr = depth_arr[np.newaxis, ...]
         if segm_arr.ndim == 2:
             segm_arr = segm_arr[np.newaxis, ...]
-
-        # Transpose to (T, 24, 3)
-        joints3d = np.transpose(joints3d, (2, 1, 0))  # shape: (T, 24, 2)
-
-        # Match shortest time dimension (often depth/segm)
+        # make sure the shape is (n, 24, 2)
+        joints2d = np.transpose(joints2d, (2, 1, 0))  
+        # match the shortest time 
         T = depth_arr.shape[0]
-        if joints3d.shape[0] < T:
-            raise ValueError("Not enough joints3D frames for available depth frames.")
-
-        return depth_arr, segm_arr, joints3d[:T]
-
+        if joints2d.shape[0] < T:
+            raise ValueError("frames do not align")
+        return depth_arr, segm_arr, joints2d[:T]
     except Exception as e:
-        print(f"⚠️ Skipping triplet due to error: {e}")
+        print(f"skipping due to error {e}")
         return None, None, None
 
 
 def find_valid_triplets(root_dir):
     files = os.listdir(root_dir)
     bases = set()
-
+    #sort triplet by bases 
     for f in files:
         if f.endswith("_depth.mat"):
             bases.add(f.replace("_depth.mat", ""))
@@ -55,13 +53,13 @@ def find_valid_triplets(root_dir):
         if all(os.path.exists(p) for p in [dpath, spath, ipath]):
             valid_triplets.append((dpath, spath, ipath))
 
-    print(f"✅ Found {len(valid_triplets)} valid triplets")
+    print(f"Found {len(valid_triplets)} valid triplets")
     return valid_triplets
 
 def load_all_triplets(root_dir):
     triplets = find_valid_triplets(root_dir)
     if not triplets:
-        raise RuntimeError("❌ Something has gone wrong.")
+        raise RuntimeError("uh oh")
     depth_all, segm_all, joints3d_all = [], [], []
 
     for dpath, spath, ipath in triplets:
@@ -72,21 +70,18 @@ def load_all_triplets(root_dir):
         joints3d_all.append(joints3d)
 
     if not depth_all:
-        raise RuntimeError("❌ No valid triplets loaded.")
+        raise RuntimeError("uh oh no data tuples found")
 
     depth_all   = np.concatenate(depth_all, axis=0)
     segm_all    = np.concatenate(segm_all, axis=0)
     joints3d_all = np.concatenate(joints3d_all, axis=0)
-
-    print(f"📦 Final shapes — Depth: {depth_all.shape}, Segm: {segm_all.shape}, Joints3D: {joints3d_all.shape}")
     return depth_all, segm_all, joints3d_all
 
 if __name__ == "__main__":
-    root_dir = "SURREAL"  # Replace with your path
+    root_dir = "SURREAL" 
     depth_all, segm_all, joints3d_all = load_all_triplets(root_dir)
-
-    # Optionally save for reuse
+    # save for reuse
     np.save("depth.npy", depth_all)
     np.save("segm.npy", segm_all)
     np.save("joints2d.npy", joints3d_all)
-    print("💾 Saved depth.npy, segm.npy, joints3d.npy")
+    print("Saved depth.npy, segm.npy, joints3d.npy")
