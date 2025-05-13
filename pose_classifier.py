@@ -68,7 +68,12 @@ dance_poses = [
 num_poses = len(pose_labels)
 pose_label_dict = {label: i for i, label in enumerate(pose_labels)}
 
+
 def get_or_train_model():
+    """
+    Description: Either retrieves classifier from job lib file or trains a new one
+    Returns: Random forest classifier 
+    """
     if os.path.exists("pose_classifier.pkl"): 
         rf = joblib.load("pose_classifier.pkl")
     else:
@@ -77,12 +82,27 @@ def get_or_train_model():
     return rf
 
 def train_random_forest_classifier(X_train, y_train):
+    """
+    Description: Trains random forest classifier on training data 
+    Parameters: 
+        - X_train joint predictions of training dataset 
+        - Y_train pose labels of training dataset 
+    Returns: Random forest classifier 
+    """
     # Train pose Random Forest classifier
     rf = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1)
     rf.fit(X_train, y_train)
     return rf
 
 def compute_score(rf, poses, target_poses):
+    """
+    Description: Computes dance scores based on the predicted and actual poses 
+    Parameters: 
+        - rf: random forest classifier 
+        - poses: pose probabilities for each pose in the dance 
+        - target_poses: the actual poses  
+    Returns: score number, pose probabilities, average accuracy
+    """
     # Get pose probabilities for each class
     pose_probabilities = rf.predict_proba(poses)
     score = 0 
@@ -101,25 +121,35 @@ def compute_score(rf, poses, target_poses):
     avg_accuracy /= len(target_poses)
     return score, pose_probabilities, avg_accuracy
 
-def load_dance(data_dir): 
+def load_dance(data_dir):
+    """
+    Description: Loads snapshots of captured dance from a given directory 
+    Parameters: 
+        - data_dir: path to dance captures 
+    Returns: testing data and ground truth labels x_test, y_test 
+    """
     assert os.path.exists(data_dir), f"Data directory '{data_dir}' does not exist."
-    y_train = [pose_label_dict[pose] for pose in dance_poses]
-    X_train = []
+    y_test = [pose_label_dict[pose] for pose in dance_poses]
+    X_test = []
     for filename in os.listdir(data_dir):
         file_path = os.path.join(data_dir, filename)
         if file_path.endswith('.npy'): 
             depth_image = np.load(file_path)
             depth_image = depth_image[:384, :] 
             _, _, joints = process_depth_map(depth_image) 
-            X_train.append(joints)
-    np.stack(X_train)
-    X_train = [X.flatten() for X in X_train]
-    y_train = np.array(y_train)
-    X_train = np.array(X_train)
-    return X_train, y_train
+            X_test.append(joints)
+    np.stack(X_test)
+    X_test = [X.flatten() for X in X_test]
+    y_test = np.array(y_test)
+    X_test = np.array(X_test)
+    return X_test, y_test
     
 
 def load_data():
+    """
+    Description: Loads training data from files 
+    Returns: processed training data with labels obtained from file names 
+    """
     data_dir = "joint_pred"
     assert os.path.exists(data_dir), f"Data directory '{data_dir}' does not exist."
     y_train = []
@@ -149,13 +179,16 @@ def load_data():
     return X_train, y_train
 
 def just_dance_score(dir): 
+    """
+    Description: Loads and scores one run of the just dance program. Prints out the score and accuracy 
+    and plots a confusion matrix and histogram to analyze the results. 
+    Parameters: 
+        - dir: folder path to snapshots of the dance 
+    """
     # loading data 
     X_train, y_train = load_data()
     rf = train_random_forest_classifier(X_train, y_train)
     X_test, y_test = load_dance(dir)
-    X_test = X_test[:len(y_test)]
-    print(len(X_test))
-    print(len(y_test))
     # ensuring number of snapshots taken is equal to the number of poses in sequence 
     assert len(X_test) == len(dance_poses)
     # computing score 
@@ -164,17 +197,14 @@ def just_dance_score(dir):
     print(f"Accuracy {accuracy * 100} %")
     plot_confusion_and_bar_graph(pose_probabilities, y_test)
 
-def score_dance(pose_joints): 
-    # scoring dance 
-    pose_joints = [pose.flatten() for pose in pose_joints]
-    X_train, y_train = load_data()
-    rf = train_random_forest_classifier(X_train, y_train)
-    targets = [pose_label_dict[pose] for pose in dance_poses]
-    score, pose_probabilities = compute_score(rf, pose_joints, targets)
-    print(f"Score {score}")
-    plot_confusion_and_bar_graph(pose_probabilities, targets)
-
 def plot_confusion_and_bar_graph(pose_probabilities, target_poses): 
+    """
+    Description: Plot confusion and bar graph to demonstrate precision and accuray
+    Parameters: 
+        - pose_probabilities: For each pose in the sequence, the probabilities that the user
+        is hitting any of the poses in our dataset
+        - target_poses: the target poses in the sequence 
+    """
     n_classes = 22
     # Create a confusion matrix considering probabilities
     cm = np.zeros((n_classes, n_classes))
@@ -214,9 +244,11 @@ def plot_confusion_and_bar_graph(pose_probabilities, target_poses):
     plt.ylim(0, 1.1)
     plt.show()
 
-
-# Test method that splits dataset into test and train 
 def test_pose_classifier(): 
+    """
+    Description: Test method that splits dataset into test and train and prints out evaluation metrics
+    Not used in just dance program 
+    """
     X, y = load_data()
     split_index = int(0.9 * len(X))
     X_train, X_test = X[:split_index], X[split_index:]
@@ -226,6 +258,3 @@ def test_pose_classifier():
     print(f"Score {score * 100} %")
     print(f"Accuracy {accuracy * 100} %")
     plot_confusion_and_bar_graph(pose_probabilities, y_test)
-
-#test_pose_classifier()
-just_dance_score("best_so_far_sunday_eve")
