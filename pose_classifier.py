@@ -7,7 +7,8 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import LabelEncoder
 from tqdm import tqdm 
-from isolation_mask import isolate_live_feed
+from test_model import process_depth_map
+
 
 # labels of all the possible poses 
 pose_labels = ["squat", "blow-right", "blow-left","point-forward", "thumb-right", "thumb-left",
@@ -86,7 +87,7 @@ def compute_score(rf, poses, target_poses):
     pose_probabilities = rf.predict_proba(poses)
     score = 0 
     avg_accuracy = 0
-    bias = 0.2
+    bias = 0.1
     for i, pose in enumerate(target_poses):
         # get highest prediction 
         pose_probabilities[i][pose] += bias
@@ -108,8 +109,9 @@ def load_dance(data_dir):
         file_path = os.path.join(data_dir, filename)
         if file_path.endswith('.npy'): 
             depth_image = np.load(file_path)
-            depth_image = depth_image[:384, :]  
-            X_train.append(depth_image)
+            depth_image = depth_image[:384, :] 
+            _, _, joints = process_depth_map(depth_image) 
+            X_train.append(joints)
     np.stack(X_train)
     X_train = [X.flatten() for X in X_train]
     y_train = np.array(y_train)
@@ -118,7 +120,7 @@ def load_dance(data_dir):
     
 
 def load_data():
-    data_dir = "pose-dataset/pose-depth-masks"
+    data_dir = "joint_pred"
     assert os.path.exists(data_dir), f"Data directory '{data_dir}' does not exist."
     y_train = []
     X_train = []
@@ -151,6 +153,7 @@ def just_dance_score(dir):
     X_train, y_train = load_data()
     rf = train_random_forest_classifier(X_train, y_train)
     X_test, y_test = load_dance(dir)
+    X_test = X_test[:len(y_test)]
     print(len(X_test))
     print(len(y_test))
     # ensuring number of snapshots taken is equal to the number of poses in sequence 
@@ -223,3 +226,6 @@ def test_pose_classifier():
     print(f"Score {score * 100} %")
     print(f"Accuracy {accuracy * 100} %")
     plot_confusion_and_bar_graph(pose_probabilities, y_test)
+
+#test_pose_classifier()
+just_dance_score("best_so_far_sunday_eve")
