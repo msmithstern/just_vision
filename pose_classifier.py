@@ -9,10 +9,13 @@ from sklearn.preprocessing import LabelEncoder
 from tqdm import tqdm 
 from isolation_mask import isolate_live_feed
 
+# labels of all the possible poses 
 pose_labels = ["squat", "blow-right", "blow-left","point-forward", "thumb-right", "thumb-left",
                "side", "hip", "hip-forward", "hip-backward", "y", "m", "c", "a", "arm-out", "clap-right", 
                "clap-left", "point-left", "jump-right", "jump-left", "shoot-left", "shoot-right", 
                ]
+
+# the sequence of poses for the YMCA dance 
 dance_poses = [
     "squat",
     "blow-right",
@@ -81,19 +84,18 @@ def train_random_forest_classifier(X_train, y_train):
 def compute_score(rf, poses, target_poses):
     # Get pose probabilities for each class
     pose_probabilities = rf.predict_proba(poses)
-    # get probability of target pose from joint estimation of deptimage 
     score = 0 
     avg_accuracy = 0
     bias = 0.2
     for i, pose in enumerate(target_poses):
+        # get highest prediction 
+        pose_probabilities[i][pose] += bias
         prediction = np.argmax(pose_probabilities[i])
         if prediction == pose: 
             avg_accuracy += 1
         print("Predicted", pose_labels[prediction])
         print("Actual", pose_labels[pose])
-        pose_probabilities[i][pose] += bias
         score += pose_probabilities[i][pose] 
-        print(score)
     score /= len(target_poses)
     avg_accuracy /= len(target_poses)
     return score, pose_probabilities, avg_accuracy
@@ -101,19 +103,12 @@ def compute_score(rf, poses, target_poses):
 def load_dance(data_dir): 
     assert os.path.exists(data_dir), f"Data directory '{data_dir}' does not exist."
     y_train = [pose_label_dict[pose] for pose in dance_poses]
-    print("Isolating live feed")
     X_train = []
     for filename in os.listdir(data_dir):
         file_path = os.path.join(data_dir, filename)
         if file_path.endswith('.npy'): 
             depth_image = np.load(file_path)
             depth_image = depth_image[:384, :]  
-            plt.imshow(depth_image, cmap='gray')
-            plt.colorbar(label='Depth')
-            plt.title('Depth Image')
-            plt.axis('off')
-            plt.show()
-            print(depth_image.shape)
             X_train.append(depth_image)
     np.stack(X_train)
     X_train = [X.flatten() for X in X_train]
@@ -136,7 +131,7 @@ def load_data():
                 # Load the depth image and append to the list
                 depth_images = np.load(file_path)
                 for depth_joints in depth_images:
-                # Append the depth image and its corresponding 
+                # clean joint vector and append to final array 
                     depth_joints = np.nan_to_num(depth_joints, nan=0.0)
                     X_train.append(np.array(depth_joints.flatten()))
                     y_train.append(pose_label_dict[label])
@@ -152,21 +147,22 @@ def load_data():
     return X_train, y_train
 
 def just_dance_score(dir): 
-    print("loading data")
+    # loading data 
     X_train, y_train = load_data()
     rf = train_random_forest_classifier(X_train, y_train)
     X_test, y_test = load_dance(dir)
     print(len(X_test))
     print(len(y_test))
+    # ensuring number of snapshots taken is equal to the number of poses in sequence 
     assert len(X_test) == len(dance_poses)
-    print("computing score")
+    # computing score 
     score, pose_probabilities, accuracy = compute_score(rf, X_test, y_test)
     print(f"Score {score * 100} %")
     print(f"Accuracy {accuracy * 100} %")
     plot_confusion_and_bar_graph(pose_probabilities, y_test)
 
 def score_dance(pose_joints): 
-    print("scoring dance")
+    # scoring dance 
     pose_joints = [pose.flatten() for pose in pose_joints]
     X_train, y_train = load_data()
     rf = train_random_forest_classifier(X_train, y_train)
@@ -191,25 +187,20 @@ def plot_confusion_and_bar_graph(pose_probabilities, target_poses):
     plt.xlabel("Predicted Pose")
     plt.ylabel("True Pose")
     plt.show()
-
     # get labels
     labels = []
     for probs, true_label in zip(pose_probabilities, target_poses): 
         labels.append(probs[true_label])
-
-    # Corresponding string annotations (same length as labels)
+    # calculate class totals 
     class_totals = {}
     for value, name in zip(labels, target_poses):
         if name not in class_totals:
             class_totals[name] = []
         class_totals[name].append(value)
-    # Compute average for each class
+    # compute average for each class
     aggregated_values = {name: np.mean(vals) for name, vals in class_totals.items()}
-
-    # Plotting
     unique_classes = list(pose_labels[key] for key in aggregated_values.keys())
     values = [aggregated_values[name] for name in aggregated_values.keys()]
-
     plt.figure(figsize=(10, 6))
     bars = plt.bar(unique_classes, values)
     plt.xticks(rotation = 60, fontsize=6)  
@@ -218,22 +209,17 @@ def plot_confusion_and_bar_graph(pose_probabilities, target_poses):
     plt.ylabel('Average Score')
     plt.title('Average Score per Pose')
     plt.ylim(0, 1.1)
-
     plt.show()
 
+
+# Test method that splits dataset into test and train 
 def test_pose_classifier(): 
-    print("loading data")
     X, y = load_data()
     split_index = int(0.9 * len(X))
     X_train, X_test = X[:split_index], X[split_index:]
     y_train, y_test = y[:split_index], y[split_index:]
-    print("training classifier")
     rf = train_random_forest_classifier(X_train, y_train)
-    print("computing score")
     score, pose_probabilities, accuracy = compute_score(rf, X_test, y_test)
-    print(f"Score {score}")
-    print(f"Accuracy {accuracy}")
+    print(f"Score {score * 100} %")
+    print(f"Accuracy {accuracy * 100} %")
     plot_confusion_and_bar_graph(pose_probabilities, y_test)
-    
-just_dance_score("best_so_far_sunday_eve")
-#test_pose_classifier()
