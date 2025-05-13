@@ -14,3 +14,5 @@ depth_offset.npy
 joints2d.npy
 /_OLD
 demo_video.mp4
+trained_regressors/
+numpy_files/
