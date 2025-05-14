@@ -52,6 +52,8 @@ def extract_features(depth_img, i, j):
     Parameters:
         depth_img: depth image 
         i, j: indices to index into the depth image to extract feature patch
+    Returns: 
+        A list with the depth value at (i, j), i, j, local mean and local standard deviation
     """
     local_patch = depth_img[max(0, i-2):min(depth_img.shape[0], i+3), max(0, j-2):min(depth_img.shape[1], j+3)]
     local_mean = np.mean(local_patch)
@@ -99,7 +101,7 @@ def train_downsample(train_idx, H, W, step, depth, segm):
 
 def train_classifiers(X_coarse, y_coarse, X_upper, y_upper, X_lower, y_lower):
     """
-    This function trains classifiers from .joblib files and creates them if they don't exist. 
+    This function trains Random Forest Classifiers for the coarse, upper body, and lower body. 
 
     Paramters:
         X_coarse: data coarse 
@@ -111,10 +113,10 @@ def train_classifiers(X_coarse, y_coarse, X_upper, y_upper, X_lower, y_lower):
     Returns: 
         classifiers for coarse/upper/lower
     """
-    #paths 
+    # paths 
     clf_coarse_path, clf_upper_path, clf_lower_path = dir + 'rf_classifier_coarse.joblib', dir +  'rf_classifier_upper.joblib', dir + 'rf_classifier_lower.joblib'
     
-    #if path exists load it otherwise train random forest classifiers (does this for coarse/upper/lower)
+    # if path exists load it otherwise train random forest classifiers (does this for coarse/upper/lower)
     if os.path.exists(clf_coarse_path):
         clf_coarse_path = joblib.load(clf_coarse_path)
     else: 
@@ -151,9 +153,13 @@ def pred_segmentation(test_idx, depth, segm, clf_coarse, clf_upper, clf_lower, H
         H - height
         W - width 
     
-    Returns depth testing degmentation ground truth testing frame and the predicted segmentation 
+    Returns:
+        depth image at a selected index
+        segmentation ground truth
+        testing index
+        predicted segmentation
     """
-    test_frame = test_idx[4]
+    test_frame = test_idx[4] # can change the test image with this variable
     #get tests and ground truths using the test frame 
     depth_test = depth[test_frame]
     segm_gt = segm[test_frame] 
@@ -164,7 +170,7 @@ def pred_segmentation(test_idx, depth, segm, clf_coarse, clf_upper, clf_lower, H
         return depth_test, segm_gt, test_frame, pred_segm 
     coarse_preds = clf_coarse.predict(X_test)
     refined_preds = []
-    #do predictions 
+    # predict using the classifiers
     for feat, c in zip(X_test, coarse_preds):
         if c == 1: 
             refined_preds.append(clf_upper.predict([feat])[0])
@@ -188,15 +194,15 @@ def train_regressors(num_joints, train_idx, joints2d, depth, H, W):
         W - width 
     
     Returns: 
-        joint regressors
+        A list of 24 joint regressors
     """
     joint_regressors = []
     #trains regressors for each joint 
     for joint_id in tqdm(range(num_joints), desc="Training regressors per joint"):
         regr_path = dir + f'rf_regressor_joint{joint_id}.joblib'
-        if os.path.exists(regr_path): #checks for joblib files if regressor alread trained 
+        if os.path.exists(regr_path): #checks for joblib files if regressor already exists 
             regr = joblib.load(regr_path)
-        else: #if not it trains it 
+        else: #if not the regressor is trained
             X_regr, y_regr = [], []
             for t in train_idx:
                 x, y = joints2d[t, joint_id]
@@ -261,12 +267,12 @@ def main():
     plt.figure()
     plt.imshow(depth_test, cmap='gray')
 
-    #plot ground truth joints with indices 
+    # plot ground truth joints with indices 
     for i, (x,y) in enumerate(joints2d[test_frame]):
         plt.scatter(x, y, c='lime', label='GT Joints' if i == 0 else "", s=40)
         plt.text(x + 5, y + 5, f'GT{i}', color='lime', fontsize=8)
 
-    #plot predicted joints with indices 
+    # plot predicted joints with indices 
     for i, (x,y) in enumerate(joint_preds):
         plt.scatter(x, y, c='blue', marker='x', label='Predicted Joints' if i == 0 else "")
         plt.text(x + 5, y + 5, f'P{i}', color='blue', fontsize=8)

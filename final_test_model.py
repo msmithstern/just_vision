@@ -13,6 +13,12 @@ NUM_JOINTS = 24
 def extract_features(depth_img, i, j):
     """
     This function extracts features using 5x5 local patches 
+
+    Parameters: 
+        depth_img: depth image
+        i, j: indices to index into the depth image to extract features 
+    Returns: 
+        A list with the depth value at (i, j), i, j, local mean and local standard deviation
     """
     local_patch = depth_img[max(0, i-2):min(depth_img.shape[0], i+3), max(0, j-2):min(depth_img.shape[1], j+3)]
     local_mean = np.mean(local_patch)
@@ -21,11 +27,14 @@ def extract_features(depth_img, i, j):
 
 def load_models():
     """
-    This function loads saved job lib files for the upper, lower, and coarse
+    This function loads saved joblib files for the upper, lower, and coarse
     random forest classifiers, and each of the joint regressors 
 
-    Returns: course classifier, upper classifier, lower classifier, 
-    list of joint regressors 
+    Returns: 
+        course classifier
+        upper classifier
+        lower classifier 
+        list of joint regressors 
     """
 
     dir = "trained_regressors/"
@@ -45,14 +54,17 @@ def load_depth_map():
     """
     This function loads a deepth image and returns the resized image and its dimensions
     
-    Returns: resized depth image, height, width    
+    Returns: 
+        resized depth image
+        height
+        width    
     """
     depth = np.load(DEPTH_PATH)
     if depth.ndim == 3: 
         depth_map = depth[0] # Taking first frame 
     else: 
         depth_map = depth 
-    resize_shape = (240, 320)
+    resize_shape = (240, 320) # resize to the same size as the SURREAL dataset to increase accuracy
     depth_map_resized = resize(depth_map, resize_shape, preserve_range=True, anti_aliasing=True).astype(depth_map.dtype)
     H, W = depth_map_resized.shape
     return depth_map_resized, H, W
@@ -64,7 +76,7 @@ def predict_segm(depth_map_resized, clf_coarse, clf_upper, clf_lower, H, W):
     This function predicts the segmentation masks for a given depth image usingothe course, upper, 
     and lower classifiers
     
-    Args:
+    Parameters:
         depth_map_resized: numpy depth image resized to 240, 320
         clf_coarse: coarse random forest classifier 
         clf_upper: upper body random forest classifier
@@ -72,7 +84,7 @@ def predict_segm(depth_map_resized, clf_coarse, clf_upper, clf_lower, H, W):
         H: height of depth image
         W: width  of depth image 
     
-    Returns:  redicted segmentation         
+    Returns: predicted segmentation         
     """    
     valid_pixels = np.where(depth_map_resized != 0) # Ignore the background pixels 
 
@@ -120,7 +132,7 @@ def predict_joints(pred_segm, joint_regressors, depth_map_resized):
 
     Parameters: 
         pred_segm - predicted segmentation array 
-        joint_regressors - joint regressors 
+        joint_regressors - list of 24 joint regressors 
         depth_map_resized - depth map array resized 
 
     Returns: 
@@ -180,9 +192,6 @@ def plot_preds(depth_map_resized, pred_segm, joint_preds):
         depth_map_resized - resized depth map
         pred_segm - predicted segmentation
         joint_preds - joint predictoins 
-    
-    Returns: 
-        Nothing
     """
     plt.figure(figsize=(12,8))
     plt.imshow(depth_map_resized, cmap='gray')
@@ -205,7 +214,7 @@ def plot_preds(depth_map_resized, pred_segm, joint_preds):
 
 def process_depth_map(depth_map, models = None):
     """
-    Process a single depth image to get joint predictions and segmentation. 
+    Processes a single depth image to get joint predictions and segmentation. 
 
     Args: 
         depth_map: numpy array of depth image
