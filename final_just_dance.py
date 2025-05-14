@@ -8,8 +8,8 @@ from pydub import AudioSegment
 import simpleaudio as sa
 import os
 import random
-import isolation_mask as mask
-from pose_classifier import just_dance_score
+import final_isolation_mask as mask
+from final_pose_classifier import just_dance_score
 
 def print_update(timestamp_ms):
     """
