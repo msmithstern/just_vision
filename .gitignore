@@ -16,4 +16,3 @@ joints2d.npy
 demo_video.mp4
 trained_regressors/
 numpy_files/
-/libfreenect2
