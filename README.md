@@ -7,4 +7,7 @@
 
 Mapping 3D image data to 2D joint locations for pose classification is a computer vision technique that can be extended to solving other problems such as predicting pedestrian routes for autonomous vehicles and identifying improper movements for injury prevention. Our attempts to map 3D data to joint locations within the game platform are the beginning of a broader and more widely integrated technique. 
 
-## Paper Detailing Methodology and Results ![Final Paper](https://drive.google.com/file/d/1YtopeFu0v7BLu2Cmvku30ix2LfRS7eTH/view?usp=sharing)
+## Paper Detailing Methodology and Results
+Paper: [Project Report](Final_Project.pdf)
+
+Poster: ![Just Vision Poster](Just%20Vision%20Poster!.png)
